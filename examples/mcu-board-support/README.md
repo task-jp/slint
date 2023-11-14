@@ -194,3 +194,12 @@ To compile and run the demo:
 cargo +esp build -p printerdemo_mcu --target xtensa-esp32s3-none-elf --no-default-features --features=mcu-board-support/esp32-s3-box --release --config examples/mcu-board-support/esp32_s3_box/cargo-config.toml
 espflash --monitor target/xtensa-esp32s3-none-elf/release/printerdemo_mcu
 ```
+
+#### ESP32-M5Stack-Core2
+
+To compile and run the demo:
+
+```sh
+cargo +esp build -p printerdemo_mcu --target xtensa-esp32-none-elf --no-default-features --features=mcu-board-support/esp32-m5stack-core2 --release --config examples/mcu-board-support/esp32_m5stack_core2/cargo-config.toml
+espflash flash --monitor target/xtensa-esp32-none-elf/release/printerdemo_mcu
+```
