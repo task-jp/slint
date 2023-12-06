@@ -34,12 +34,18 @@ mod esp32_m5stack_core2;
 #[cfg(feature = "esp32-m5stack-core2")]
 pub use esp32_m5stack_core2::*;
 
+#[cfg(feature = "rp2040-lcd-1-28")]
+mod rp2040_lcd_1_28;
+#[cfg(feature = "rp2040-lcd-1-28")]
+pub use rp2040_lcd_1_28::*;
+
 #[cfg(not(any(
     feature = "pico-st7789",
     feature = "stm32h735g",
     feature = "esp32-s2-kaluga-1",
     feature = "esp32-s3-box",
-    feature = "esp32-m5stack-core2"
+    feature = "esp32-m5stack-core2",
+    feature = "rp2040-lcd-1-28",
 )))]
 pub use i_slint_core_macros::identity as entry;
 
@@ -48,6 +54,8 @@ pub use i_slint_core_macros::identity as entry;
     feature = "stm32h735g",
     feature = "esp32-s2-kaluga-1",
     feature = "esp32-s3-box",
-    feature = "esp32-m5stack-core2"
+    feature = "esp32-m5stack-core2",
+    feature = "rp2040-lcd-1-28",
 )))]
 pub fn init() {}
+
