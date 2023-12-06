@@ -29,11 +29,17 @@ mod esp32_s3_box;
 #[cfg(feature = "esp32-s3-box")]
 pub use esp32_s3_box::*;
 
+#[cfg(feature = "rp2040-lcd-1-28")]
+mod rp2040_lcd_1_28;
+#[cfg(feature = "rp2040-lcd-1-28")]
+pub use rp2040_lcd_1_28::*;
+
 #[cfg(not(any(
     feature = "pico-st7789",
     feature = "stm32h735g",
     feature = "esp32-s2-kaluga-1",
-    feature = "esp32-s3-box"
+    feature = "esp32-s3-box",
+    feature = "rp2040-lcd-1-28",
 )))]
 pub use i_slint_core_macros::identity as entry;
 
@@ -41,6 +47,7 @@ pub use i_slint_core_macros::identity as entry;
     feature = "pico-st7789",
     feature = "stm32h735g",
     feature = "esp32-s2-kaluga-1",
-    feature = "esp32-s3-box"
+    feature = "esp32-s3-box",
+    feature = "rp2040-lcd-1-28",
 )))]
 pub fn init() {}
