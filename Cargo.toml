@@ -21,6 +21,7 @@ members = [
     'examples/printerdemo_old/rust',
     'examples/printerdemo/rust',
     'examples/printerdemo_mcu',
+    'examples/calc_mcu',
     'examples/slide_puzzle',
     'examples/todo/rust',
     'examples/virtual_keyboard/rust',

@@ -1,0 +1,56 @@
+import "./fonts/NotoSans-Regular.ttf";
+
+export global CalcLogic {
+    callback button-pressed(string);
+}
+
+component Button inherits Rectangle {
+    min-width: 30px;
+    min-height: 30px;
+    in property <string> text;
+    background: ta.pressed ? red : ta.has-hover ? #2b6fb3 : #1d78d3;
+    animate background { duration: 100ms; }
+    border-radius: 4px;
+    border-width: 2px;
+    border-color: self.background.darker(20%);
+    Text { text: root.text; }
+    ta := TouchArea {
+        clicked => { CalcLogic.button-pressed(root.text); }
+    }
+}
+
+export component App inherits Window {
+    default-font-family: "Noto Sans";
+    default-font-size: 12px;
+    
+    in property <int> value: 0;
+    GridLayout {
+        padding: 10px;
+        spacing: 5px;
+        Text { text: value; colspan: 4; }
+        Row {
+            Button { text: "1"; }
+            Button { text: "2"; }
+            Button { text: "3"; }
+            Button { text: "+"; }
+        }
+        Row {
+            Button { text: "4"; }
+            Button { text: "5"; }
+            Button { text: "6"; }
+            Button { text: "-"; }
+        }
+        Row {
+            Button { text: "7"; }
+            Button { text: "8"; }
+            Button { text: "9"; }
+            Button { text: "*"; }
+        }
+        Row {
+            Button { text: "C"; }
+            Button { text: "0"; }
+            Button { text: "="; }
+            Button { text: "/"; }
+        }
+    }
+}

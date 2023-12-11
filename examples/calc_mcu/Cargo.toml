@@ -1,0 +1,27 @@
+# Copyright © SixtyFPS GmbH <info@slint.dev>
+# SPDX-License-Identifier: MIT
+
+[package]
+name = "calc_mcu"
+version = "1.3.2"
+authors = ["Slint Developers <info@slint.dev>"]
+edition = "2021"
+build = "build.rs"
+publish = false
+license = "MIT"
+
+[[bin]]
+path = "main.rs"
+name = "calc_mcu"
+
+[features]
+simulator = ["slint/renderer-software", "slint/backend-winit", "slint/std"]
+default = ["simulator"]
+
+[dependencies]
+slint = { path = "../../api/rs/slint", default-features = false, features = ["compat-1-2"] }
+mcu-board-support = { path = "../mcu-board-support" }
+
+[build-dependencies]
+slint-build = { path = "../../api/rs/build" }
+
