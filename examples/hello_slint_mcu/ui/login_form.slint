@@ -1,0 +1,57 @@
+import { LineEdit, ComboBox, GridBox, Button } from "std-widgets.slint";
+
+export component LoginForm inherits Rectangle {
+    width: 320px;
+    height: 240px;
+
+    GridBox {
+        Row {
+            Text {
+                text: "Username :";
+                horizontal-alignment: TextHorizontalAlignment.right;
+                vertical-alignment: TextVerticalAlignment.center;
+            }
+            username := LineEdit {
+                colspan: 2;
+                text: "tasuku";
+            }
+        }
+        Row {
+            Text {
+                text: "Country :";
+                horizontal-alignment: TextHorizontalAlignment.right;
+                vertical-alignment: TextVerticalAlignment.center;
+            }
+            ComboBox {
+                colspan: 2;
+                model: ["Japan", "USA"];
+            }
+        }
+        Row {
+            Text {
+                text: "Password :";
+                horizontal-alignment: TextHorizontalAlignment.right;
+                vertical-alignment: TextVerticalAlignment.center;
+            }
+            password := LineEdit {
+                colspan: 2;
+                input-type: InputType.password;
+                text: "tasuku.suzuki";
+            }
+        }
+        Row {
+            Button {
+                colspan: 2;
+                text: "Login";
+                clicked => {
+                }
+            }
+            Button {
+                col: 2;
+                text: "Cancel";
+                clicked => {
+                }
+            }
+        }
+    }
+}

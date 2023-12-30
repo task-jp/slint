@@ -1,0 +1,78 @@
+// import { WioSplash } from "./wio_splash.slint";
+import { LoginForm } from "./login_form.slint";
+
+export component HelloSlint inherits Window {
+    width: 320px;
+    height: 240px;
+    default-font-family: "Noto Sans";
+
+    LoginForm {}
+    /*
+    splash := WioSplash {
+        image: @image-url("ferris.png");
+        ComboBox {
+            model: ["Hello", "World"];
+        }
+    }
+
+    forward-focus: my-key-handler;
+    my-key-handler := FocusScope {
+        key-pressed(event) => {
+            debug(event.text);
+            if (event.text == Key.F1) {
+                splash.is-button1-pressed = true;
+            }
+            if (event.text == Key.F2) {
+                splash.is-button2-pressed = true;
+            }
+            if (event.text == Key.F3) {
+                splash.is-button3-pressed = true;
+            }
+            if (event.text == Key.LeftArrow) {
+                splash.is-left-pressed = true;
+            }
+            if (event.text == Key.RightArrow) {
+                splash.is-right-pressed = true;
+            }
+            if (event.text == Key.UpArrow) {
+                splash.is-up-pressed = true;
+            }
+            if (event.text == Key.DownArrow) {
+                splash.is-down-pressed = true;
+            }
+            if (event.text == Key.Return) {
+                splash.is-return-pressed = true;
+            }
+            accept
+        }
+        key-released(event) => {
+            debug(event.text);
+            if (event.text == Key.F1) {
+                splash.is-button1-pressed = false;
+            }
+            if (event.text == Key.F2) {
+                splash.is-button2-pressed = false;
+            }
+            if (event.text == Key.F3) {
+                splash.is-button3-pressed = false;
+            }
+            if (event.text == Key.LeftArrow) {
+                splash.is-left-pressed = false;
+            }
+            if (event.text == Key.RightArrow) {
+                splash.is-right-pressed = false;
+            }
+            if (event.text == Key.UpArrow) {
+                splash.is-up-pressed = false;
+            }
+            if (event.text == Key.DownArrow) {
+                splash.is-down-pressed = false;
+            }
+            if (event.text == Key.Return) {
+                splash.is-return-pressed = false;
+            }
+            accept
+        }
+    }
+    */
+}

@@ -1,0 +1,105 @@
+global Palette {
+    out property<color> case-color: white;
+    out property<color> button-color: blue;
+    out property <color> bg-color: black;
+}
+
+component WioCase inherits Rectangle {
+    Rectangle {
+        x: 20px;
+        y: 20px;
+        width: 280px;
+        height: 200px;
+        border-color: black;
+        border-width: 2px;
+        background: Palette.bg-color;
+    }
+
+    Rectangle {
+        x: 20px;
+        y: 180px;
+        width: 280px;
+        height: 40px;
+        background: Palette.case-color;
+    }
+
+    for i[index] in [0, 1, 2, 3] : Rectangle {
+        Rectangle {
+            x: 40px + i * 15px;
+            y: 190px;
+            width: 5px;
+            height: 20px;
+            border-radius: 2px;
+            background: Palette.bg-color;
+        }
+    }
+}
+
+component WioButtons inherits Rectangle {
+    in property<[bool]> f_n: [false, false, false];
+    in property <int> dx: 0;
+    in property <int> dy: 0;
+    in property <bool> clicked: false;
+    for i[index] in [0, 1, 2] : Rectangle {
+        Rectangle {
+            x: 40px + i * 60px;
+            y: f_n[i] ? 18px : 15px;
+            width: 40px;
+            height: f_n[i] ? 2px : 5px;
+            background: Palette.button-color;
+        }
+    }
+
+    Rectangle {
+        x: 260px;
+        y: 180px;
+        Rectangle {
+            x: dx * 5px - self.width / 2;
+            y: dy * 5px - self.height / 2;
+            width: clicked ? 30px : 40px;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: Palette.button-color;
+        }
+        }
+}
+
+component WioImage inherits Image {
+    width: 86px;
+    height: 64px;
+}
+
+export component WioSplash {
+    in-out property <color> text-color: green;
+    in-out property <image> image;
+    in property<bool> is-button1-pressed;
+    in property<bool> is-button2-pressed;
+    in property<bool> is-button3-pressed;
+    in property<bool> is-left-pressed;
+    in property<bool> is-up-pressed;
+    in property<bool> is-right-pressed;
+    in property<bool> is-down-pressed;
+    in property<bool> is-return-pressed;
+    width: 320px;
+    height: 240px;
+    WioCase {}
+    WioButtons{
+        f_n: [is-button1-pressed, is-button2-pressed, is-button3-pressed];
+        dx: is-left-pressed ? -1 : is-right-pressed ? 1 : 0;
+        dy: is-up-pressed ? -1 : is-down-pressed ? 1 : 0;
+        clicked: is-return-pressed;
+    }
+    WioImage {
+        source: root.image;
+    }
+
+    Text {
+        x: 30px;
+        y: 30px;
+        text: "Booting Wio Terminal...";
+        font-size: 16px;
+        color: root.text-color;
+    }
+
+    @children
+}

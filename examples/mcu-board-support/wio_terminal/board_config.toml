@@ -1,0 +1,12 @@
+# Copyright © SixtyFPS GmbH <info@slint.dev>
+# SPDX-License-Identifier: MIT
+
+link_args = [
+    "--nmagic",
+    "-Tlink.x",
+    "-x",
+    "-S",
+]
+link_search_path = [
+    "."
+]

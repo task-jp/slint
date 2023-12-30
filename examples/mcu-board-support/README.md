@@ -192,3 +192,11 @@ To compile and run the demo:
 ```sh
 cargo +esp run -p printerdemo_mcu --target xtensa-esp32s3-none-elf --no-default-features --features=mcu-board-support/esp32-s3-box --release --config examples/mcu-board-support/esp32_s3_box/cargo-config.toml
 ```
+
+#### Wio Terminal
+
+To compile and run the demo:
+
+```sh
+CARGO_TARGET_THUMBV7EM_NONE_EABIHF_RUNNER="hf2 elf" cargo run -p printerdemo_mcu --target thumbv7em-none-eabihf --no-default-features --features=mcu-board-support/wio-terminal --release
+```

@@ -42,3 +42,8 @@ rustflags = [
     "--cfg",
     'target_has_atomic="ptr"',
 ]
+
+[target.thumbv7em-none-eabihf]
+rustflags = [
+    "-C","opt-level=z",
+]
