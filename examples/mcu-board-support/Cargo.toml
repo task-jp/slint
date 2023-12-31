@@ -21,6 +21,7 @@ pico-st7789 = ["slint/unsafe-single-threaded", "rp-pico", "embedded-hal", "corte
 stm32h735g = ["slint/unsafe-single-threaded", "embedded-hal", "cortex-m/critical-section-single-core", "cortex-m-rt","embedded-alloc", "embedded-time", "cortex-m", "stm32h7xx-hal/stm32h735", "defmt", "defmt-rtt", "embedded-display-controller", "ft5336", "panic-probe", "slint/libm", "getrandom"]
 esp32-s2-kaluga-1 = ["slint/unsafe-single-threaded", "esp32s2-hal", "embedded-hal", "xtensa-lx-rt/esp32s2", "esp-alloc", "esp-println/esp32s2", "display-interface", "display-interface-spi", "st7789", "slint/libm"]
 esp32-s3-box = ["slint/unsafe-single-threaded", "esp32s3-hal", "embedded-hal", "xtensa-lx-rt/esp32s3", "esp-alloc", "esp-println/esp32s3", "esp-backtrace/esp32s3", "display-interface", "display-interface-spi", "mipidsi", "embedded-graphics-core", "slint/libm", "tt21100"]
+esp32-m5stack-dial = ["slint/unsafe-single-threaded", "esp32s3-hal", "embedded-hal", "xtensa-lx-rt/esp32s3", "esp-alloc", "esp-println/esp32s3", "esp-backtrace/esp32s3", "display-interface", "display-interface-spi", "embedded-graphics-core", "slint/libm", "gc9a01"]
 
 [dependencies]
 slint = { version = "=1.4.0", path = "../../api/rs/slint", default-features = false, features = ["compat-1-2", "renderer-software"] }
@@ -60,6 +61,7 @@ esp-alloc = { version = "0.3", optional = true }
 esp-println = { version = "0.7.0", optional = true }
 esp-backtrace = { version = "0.9.0", optional = true, features = ["panic-handler", "print-uart"] }
 tt21100 = { version = "0.1", optional = true }
+gc9a01 = { version = "0.1.0", git = "https://github.com/task-jp/gc9a01-rs/", optional = true, features = ["graphics"] }
 
 mipidsi = { version = "0.7.1", optional = true }
 embedded-graphics-core =  { version = "0.4", optional = true }

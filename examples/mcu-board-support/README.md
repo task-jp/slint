@@ -192,3 +192,11 @@ To compile and run the demo:
 ```sh
 cargo +esp run -p printerdemo_mcu --target xtensa-esp32s3-none-elf --no-default-features --features=mcu-board-support/esp32-s3-box --release --config examples/mcu-board-support/esp32_s3_box/cargo-config.toml
 ```
+
+#### ESP32-M5Stack-Dial
+
+To compile and run the demo:
+
+```sh
+cargo +esp run -p printerdemo_mcu --no-default-features --features=mcu-board-support/esp32-m5stack-dial --release --config examples/mcu-board-support/esp32_m5stack_dial/cargo-config.toml
+```
