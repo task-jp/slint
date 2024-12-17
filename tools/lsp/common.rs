@@ -482,6 +482,7 @@ pub struct PreviewComponent {
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub enum LspToPreviewMessage {
     InvalidateContents { url: lsp_types::Url },
+    ForgetFile { url: lsp_types::Url },
     SetContents { url: VersionedUrl, contents: String },
     SetConfiguration { config: PreviewConfig },
     ShowPreview(PreviewComponent),
@@ -552,6 +553,8 @@ pub struct ComponentInformation {
     pub is_std_widget: bool,
     /// This type was exported
     pub is_exported: bool,
+    /// This is a primitive element that reacts to events in some way
+    pub is_interactive: bool,
     /// This is a layout
     pub is_layout: bool,
     /// The URL to the file containing this type

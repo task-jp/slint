@@ -94,7 +94,7 @@ component SimpleText inherits Empty {
     in property <string> text;
     in property <length> font-size;
     in property <int> font-weight;
-    in property <brush> color;  // Palette.default-text-color  set in apply_default_properties_from_style
+    in property <brush> color;  // StyleMetrics.default-text-color  set in apply_default_properties_from_style
     in property <TextHorizontalAlignment> horizontal-alignment;
     in property <TextVerticalAlignment> vertical-alignment;
     //-default_size_binding:implicit_size
@@ -126,16 +126,16 @@ export component TouchArea {
     callback clicked;
     callback double-clicked;
     callback moved;
-    callback pointer-event(PointerEvent);
-    callback scroll-event(PointerScrollEvent) -> EventResult;
+    callback pointer-event(event: PointerEvent);
+    callback scroll-event(event: PointerScrollEvent) -> EventResult;
     //-default_size_binding:expands_to_parent_geometry
 }
 
 export component FocusScope {
     in property <bool> enabled: true;
     out property <bool> has-focus;
-    callback key_pressed(KeyEvent) -> EventResult;
-    callback key_released(KeyEvent) -> EventResult;
+    callback key_pressed(event: KeyEvent) -> EventResult;
+    callback key_released(event: KeyEvent) -> EventResult;
     callback focus_changed_event();
     //-default_size_binding:expands_to_parent_geometry
     //-accepts_focus
@@ -183,22 +183,50 @@ export component SwipeGestureHandler {
     //-default_size_binding:expands_to_parent_geometry
 }
 
+// Lowered to MenuBarImpl from the style
+component MenuBar {
+    //-is_non_item_type
+    //-disallow_global_types_as_child_elements
+    in property <[MenuEntry]> entries;
+
+    callback activated(entry: MenuEntry);
+    callback sub-menu(entry: MenuEntry) -> [MenuEntry];
+
+    // Currently experimental
+    //-is_internal
+}
+
+// Lowered to a call that generate a ContextMenuImpl
+export component ContextMenu {
+    function show() {}
+    //in property <[MenuEntry]> entries;
+    callback activated(entry: MenuEntry);
+    callback sub-menu(entry: MenuEntry) -> [MenuEntry];
+    //-default_size_binding:expands_to_parent_geometry
+
+    // Currently experimental
+    //-is_internal
+}
+
 component WindowItem {
     in-out property <length> width;
     in-out property <length> height;
-    in property <brush> background; // Palette.background  set in apply_default_properties_from_style
+    in property <brush> background; // StyleMetrics.background  set in apply_default_properties_from_style
     in property <brush> color <=> background;
     in property <string> title: "Slint Window";
     in property <bool> no-frame;
     in property <length> resize-border-width;
     in property <bool> always-on-top;
+    in-out property <bool> full-screen;
     in property <string> default-font-family;
     in-out property <length> default-font-size; // <=> StyleMetrics.default-font-size  set in apply_default_properties_from_style
     in property <int> default-font-weight;
     in property <image> icon;
 }
 
-export component Window inherits WindowItem { }
+export component Window inherits WindowItem {
+    MenuBar {}
+}
 
 export component BoxShadow inherits Empty {
     in property <length> border_radius;
@@ -216,9 +244,9 @@ export component TextInput {
     in property <length> font-size;
     in property <bool> font-italic;
     in property <int> font-weight;
-    in property <brush> color; // Palette.default-text-color  set in apply_default_properties_from_style
-    in property <color> selection-foreground-color; // Palette.selection-foreground set in apply_default_properties_from_style
-    in property <color> selection-background-color; // Palette.selection-background set in apply_default_properties_from_style
+    in property <brush> color; // StyleMetrics.default-text-color  set in apply_default_properties_from_style
+    in property <color> selection-foreground-color; // StyleMetrics.selection-foreground set in apply_default_properties_from_style
+    in property <color> selection-background-color; // StyleMetrics.selection-background set in apply_default_properties_from_style
     in property <TextHorizontalAlignment> horizontal-alignment;
     in property <TextVerticalAlignment> vertical-alignment;
     in property <TextWrap> wrap;
@@ -233,9 +261,10 @@ export component TextInput {
     out property <int> anchor-position-byte-offset;
     out property <bool> has-focus;
     callback accepted;
-    callback rejected;
     callback edited;
-    callback cursor_position_changed(Point);
+    callback cursor_position_changed(position: Point);
+    callback key_pressed(event: KeyEvent) -> EventResult;
+    callback key_released(event: KeyEvent) -> EventResult;
     in property <bool> enabled: true;
     in property <bool> single-line: true;
     in property <bool> read-only: false;
@@ -418,7 +447,7 @@ export component PopupWindow {
     in property <length> anchor_y;
     in property <length> anchor_height;
     in property <length> anchor_width;*/
-    in property <bool> close-on-click;      
+    in property <bool> close-on-click;
     in property <PopupClosePolicy> close-policy; // constexpr hardcoded in typeregister.rs
     //show() is hardcoded in typeregister.rs
 }
@@ -481,7 +510,8 @@ export component NativeSpinBox {
     in property <int> minimum;
     in property <int> maximum: 100;
     in property <int> step-size: 1;
-    callback edited(int /* value */);
+    in property <TextHorizontalAlignment> horizontal-alignment;
+    callback edited(value: int);
     //-is_internal
     //-accepts_focus
 }
@@ -492,9 +522,10 @@ export component NativeSlider {
     in-out property <float> value;
     in property <float> minimum;
     in property <float> maximum: 100;
+    in property <float> step: 1;
     in property <Orientation> orientation: Orientation.horizontal;
-    callback changed(float);
-    callback released(float);
+    callback changed(value: float);
+    callback released(value: float);
     //-is_internal
     //-accepts_focus
 }
@@ -538,8 +569,8 @@ export component NativeScrollView {
     out property <length> native-padding-top;
     out property <length> native-padding-bottom;
     in property <bool> has_focus;
-    in property <ScrollBarPolicy> vertical-bar-policy;
-    in property <ScrollBarPolicy> horizontal-bar-policy;
+    in property <ScrollBarPolicy> vertical-scrollbar-policy;
+    in property <ScrollBarPolicy> horizontal-scrollbar-policy;
     in property <bool> enabled: true;
     //-default_size_binding:expands_to_parent_geometry
     //-is_internal
@@ -547,7 +578,6 @@ export component NativeScrollView {
 
 export component NativeStandardListViewItem {
     in property <int> index;
-    in property <int> total-items;
     in property <StandardListViewItem> item;
     in-out property <bool> is_selected;
     in property <bool> has_hover;
@@ -653,3 +683,4 @@ export global NativePalette {
     //-is_non_item_type
     //-is_internal
 }
+

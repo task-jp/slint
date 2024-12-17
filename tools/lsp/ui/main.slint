@@ -4,15 +4,15 @@
 // cSpell: ignore Heade
 
 import { Button, ComboBox, ListView, ScrollView, VerticalBox, Palette } from "std-widgets.slint";
-import { Api, ComponentItem } from "api.slint";
+import { Api, ComponentItem, DiagnosticSummary } from "api.slint";
 
-import { DiagnosticsOverlay } from "./components/diagnostics-overlay.slint";
 import { EditorSpaceSettings, Icons } from "./components/styling.slint";
 import { StatusLine } from "./components/status-line.slint";
 import { HeaderView } from "./views/header-view.slint";
 import { LibraryView } from "./views/library-view.slint";
 import { DrawAreaMode, PreviewView } from "./views/preview-view.slint";
 import { PropertyView } from "./views/property-view.slint";
+import { OutOfDateBox } from "components/out-of-date-box.slint";
 
 export { Api }
 
@@ -29,7 +29,6 @@ export component PreviewUi inherits Window {
     property <bool> show-left-sidebar;
     property <bool> show-right-sidebar;
 
-
     title: "Slint Live-Preview";
     icon: @image-url("assets/slint-logo-small-light.png");
 
@@ -40,16 +39,6 @@ export component PreviewUi inherits Window {
                     component-factory: Api.preview-area;
                 }
             }
-
-            // Diagnostics overlay:
-            DiagnosticsOverlay {
-                width: 100%;
-                height: 100%;
-                diagnostics <=> Api.diagnostics;
-                show-document(url, line, column) => {
-                    Api.show-document(url, line, column);
-                }
-            }
         }
         if Api.show-preview-ui: Rectangle {
             VerticalLayout {
@@ -57,7 +46,6 @@ export component PreviewUi inherits Window {
                     show-left-sidebar <=> root.show-left-sidebar;
                     show-right-sidebar <=> root.show-right-sidebar;
 
-                    edit-mode <=> Api.design-mode;
                     current-style <=> Api.current-style;
                     known-styles <=> Api.known-styles;
 
@@ -65,28 +53,29 @@ export component PreviewUi inherits Window {
                         Api.style-changed();
                     }
 
-                    edit:=Button {
+                    edit := Button {
                         icon: Icons.inspect;
                         colorize-icon: preview.select-mode ? false : true;
                         checkable: true;
                         checked <=> preview.select-mode;
-                        enabled: !preview.design-mode;
-                        visible: !preview.design-mode;
                         primary: preview.select-mode;
+                        enabled: preview.preview-is-current;
                     }
                 }
-
 
                 HorizontalLayout {
                     spacing: EditorSpaceSettings.default-spacing;
 
                     if  root.show-left-sidebar: LibraryView {
                         known-components: Api.known-components;
+
+                        preview-area-is-current: preview.preview-is-current;
                         preview-area-position-x: preview.preview-area-position-x;
                         preview-area-position-y: preview.preview-area-position-y;
                         preview-area-width: preview.preview-area-width;
                         preview-area-height: preview.preview-area-height;
-                        visible-component <=> root.visible-component;
+
+                        visible-component: root.visible-component;
 
                         can-drop(index, x, y, on-drop-area) => {
                             Api.can-drop(index, x, y, on-drop-area);
@@ -105,11 +94,19 @@ export component PreviewUi inherits Window {
                         visible-component <=> root.visible-component;
                     }
 
-                    if  root.show-right-sidebar: PropertyView { }
+                    if  root.show-right-sidebar: PropertyView {
+                        opacity: preview.preview-is-current ? 1.0 : 0.3;
+                        enabled: preview.preview-is-current;
+                    }
                 }
 
                 StatusLine { }
             }
         }
+    }
+
+    if Api.diagnostic-summary == DiagnosticSummary.Errors: OutOfDateBox {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height / 10);
     }
 }

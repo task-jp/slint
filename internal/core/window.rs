@@ -10,13 +10,11 @@ use crate::api::{
     CloseRequestResponse, LogicalPosition, PhysicalPosition, PhysicalSize, PlatformError, Window,
     WindowPosition, WindowSize,
 };
-use crate::graphics::Point;
 use crate::input::{
     key_codes, ClickState, InternalKeyboardModifierState, KeyEvent, KeyEventType, MouseEvent,
     MouseInputState, TextCursorBlinker,
 };
-use crate::item_tree::ItemRc;
-use crate::item_tree::{ItemTreeRc, ItemTreeRef, ItemTreeVTable, ItemTreeWeak};
+use crate::item_tree::{ItemRc, ItemTreeRc, ItemTreeRef, ItemTreeVTable, ItemTreeWeak, ItemWeak};
 use crate::items::{ColorScheme, InputType, ItemRef, MouseCursor, PopupClosePolicy};
 use crate::lengths::{LogicalLength, LogicalPoint, LogicalRect, SizeLengths};
 use crate::properties::{Property, PropertyTracker};
@@ -333,7 +331,7 @@ impl<'a> WindowProperties<'a> {
 
     /// Returns true if the window should be shown fullscreen; false otherwise.
     pub fn is_fullscreen(&self) -> bool {
-        self.0.fullscreen.get()
+        self.0.is_fullscreen()
     }
 
     /// true if the window is in a maximized state, otherwise false
@@ -391,8 +389,10 @@ struct PopupWindow {
     location: PopupWindowLocation,
     /// The component that is responsible for providing the popup content.
     component: ItemTreeRc,
-    //// Defines the close behaviour of the popup.
+    /// Defines the close behaviour of the popup.
     close_policy: PopupClosePolicy,
+    /// the item that had the focus in the parent window when the popup was opened
+    focus_item_in_parent: ItemWeak,
 }
 
 #[pin_project::pin_project]
@@ -431,7 +431,6 @@ pub struct WindowInner {
     cursor_blinker: RefCell<pin_weak::rc::PinWeak<crate::input::TextCursorBlinker>>,
 
     pinned_fields: Pin<Box<WindowPinnedFields>>,
-    fullscreen: Cell<bool>,
     maximized: Cell<bool>,
     minimized: Cell<bool>,
 
@@ -489,10 +488,6 @@ impl WindowInner {
                     "i_slint_core::Window::text_input_focused",
                 ),
             }),
-            #[cfg(feature = "std")]
-            fullscreen: Cell::new(std::env::var("SLINT_FULLSCREEN").is_ok()),
-            #[cfg(not(feature = "std"))]
-            fullscreen: Cell::new(false),
             maximized: Cell::new(false),
             minimized: Cell::new(false),
             focus_item: Default::default(),
@@ -690,15 +685,16 @@ impl WindowInner {
         event.modifiers = self.modifiers.get().into();
 
         let mut item = self.focus_item.borrow().clone().upgrade();
+
+        if item.as_ref().is_some_and(|i| !i.is_visible()) {
+            // Reset the focus... not great, but better than keeping it.
+            self.take_focus_item();
+            item = None;
+        }
+
         while let Some(focus_item) = item {
-            if !focus_item.is_visible() {
-                // Reset the focus... not great, but better than keeping it.
-                self.take_focus_item();
-            } else if focus_item.borrow().as_ref().key_event(
-                &event,
-                &self.window_adapter(),
-                &focus_item,
-            ) == crate::input::KeyEventResult::EventAccepted
+            if focus_item.borrow().as_ref().key_event(&event, &self.window_adapter(), &focus_item)
+                == crate::input::KeyEventResult::EventAccepted
             {
                 crate::properties::ChangeTracker::run_change_handlers();
                 return;
@@ -720,6 +716,20 @@ impl WindowInner {
             && !extra_mod
         {
             self.focus_previous_item();
+        } else if event.event_type == KeyEventType::KeyPressed
+            && event.text.starts_with(key_codes::Escape)
+        {
+            // Closes top most popup on esc key pressed when policy is not no-auto-close
+            let close_on_escape = if let Some(popup) = self.active_popups.borrow().last() {
+                popup.close_policy == PopupClosePolicy::CloseOnClick
+                    || popup.close_policy == PopupClosePolicy::CloseOnClickOutside
+            } else {
+                false
+            };
+
+            if close_on_escape {
+                self.close_top_popup();
+            }
         }
         crate::properties::ChangeTracker::run_change_handlers();
     }
@@ -827,11 +837,15 @@ impl WindowInner {
 
     /// Move keyboard focus to the next item
     pub fn focus_next_item(&self) {
-        let component = self.component();
-        let start_item = self
-            .take_focus_item()
-            .map(next_focus_item)
-            .unwrap_or_else(|| ItemRc::new(component, 0));
+        let start_item = self.take_focus_item().map(next_focus_item).unwrap_or_else(|| {
+            ItemRc::new(
+                self.active_popups
+                    .borrow()
+                    .last()
+                    .map_or_else(|| self.component(), |p| p.component.clone()),
+                0,
+            )
+        });
         let end_item = self.move_focus(start_item.clone(), next_focus_item);
         let window_adapter = self.window_adapter();
         if let Some(window_adapter) = window_adapter.internal(crate::InternalToken) {
@@ -841,10 +855,15 @@ impl WindowInner {
 
     /// Move keyboard focus to the previous item.
     pub fn focus_previous_item(&self) {
-        let component = self.component();
-        let start_item = previous_focus_item(
-            self.take_focus_item().unwrap_or_else(|| ItemRc::new(component, 0)),
-        );
+        let start_item = previous_focus_item(self.take_focus_item().unwrap_or_else(|| {
+            ItemRc::new(
+                self.active_popups
+                    .borrow()
+                    .last()
+                    .map_or_else(|| self.component(), |p| p.component.clone()),
+                0,
+            )
+        }));
         let end_item = self.move_focus(start_item.clone(), previous_focus_item);
         let window_adapter = self.window_adapter();
         if let Some(window_adapter) = window_adapter.internal(crate::InternalToken) {
@@ -981,13 +1000,12 @@ impl WindowInner {
     pub fn show_popup(
         &self,
         popup_componentrc: &ItemTreeRc,
-        position: Point,
+        position: LogicalPosition,
         close_policy: PopupClosePolicy,
         parent_item: &ItemRc,
     ) -> NonZeroU32 {
-        let position = parent_item.map_to_window(
-            parent_item.geometry().origin + LogicalPoint::from_untyped(position).to_vector(),
-        );
+        let position = parent_item
+            .map_to_window(parent_item.geometry().origin + position.to_euclid().to_vector());
         let root_of = |mut item_tree: ItemTreeRc| loop {
             if ItemRc::new(item_tree.clone(), 0).downcast::<crate::items::WindowItem>().is_some() {
                 return item_tree;
@@ -1077,14 +1095,31 @@ impl WindowInner {
             }
         };
 
+        let focus_item = self.take_focus_item().map(|item| item.downgrade()).unwrap_or_default();
+
         self.active_popups.borrow_mut().push(PopupWindow {
             popup_id,
             location,
             component: popup_componentrc.clone(),
             close_policy,
+            focus_item_in_parent: focus_item,
         });
 
         popup_id
+    }
+
+    /// Attempt to show a native popup menu
+    ///
+    /// context_menu_item is an instance of a ContextMenu
+    ///
+    /// Returns false if the native platform doesn't support it
+    pub fn show_native_popup_menu(
+        &self,
+        _context_menu_item: &ItemRc,
+        _position: LogicalPosition,
+    ) -> bool {
+        // TODO
+        false
     }
 
     // Close the popup associated with the given popup window.
@@ -1108,6 +1143,9 @@ impl WindowInner {
                 let _ = adapter.set_visible(false);
             }
         }
+        if let Some(focus) = current_popup.focus_item_in_parent.upgrade() {
+            self.set_focus_item(&focus, true);
+        }
     }
 
     /// Removes the popup matching the given ID.
@@ -1116,8 +1154,7 @@ impl WindowInner {
         let maybe_index = active_popups.iter().position(|popup| popup.popup_id == popup_id);
 
         if let Some(popup_index) = maybe_index {
-            self.close_popup_impl(&active_popups[popup_index]);
-            active_popups.remove(popup_index);
+            self.close_popup_impl(&active_popups.remove(popup_index));
         }
     }
 
@@ -1206,13 +1243,19 @@ impl WindowInner {
 
     /// Returns if the window is currently maximized
     pub fn is_fullscreen(&self) -> bool {
-        self.fullscreen.get()
+        if let Some(window_item) = self.window_item() {
+            window_item.as_pin_ref().full_screen()
+        } else {
+            false
+        }
     }
 
     /// Set or unset the window to display fullscreen.
     pub fn set_fullscreen(&self, enabled: bool) {
-        self.fullscreen.set(enabled);
-        self.update_window_properties()
+        if let Some(window_item) = self.window_item() {
+            window_item.as_pin_ref().full_screen.set(enabled);
+            self.update_window_properties()
+        }
     }
 
     /// Returns if the window is currently maximized
@@ -1237,6 +1280,11 @@ impl WindowInner {
         self.update_window_properties()
     }
 
+    /// Returns the (context global) xdg app id for use with wayland and x11.
+    pub fn xdg_app_id(&self) -> Option<SharedString> {
+        self.ctx.xdg_app_id()
+    }
+
     /// Returns the upgraded window adapter
     pub fn window_adapter(&self) -> Rc<dyn WindowAdapter> {
         self.window_adapter_weak.upgrade().unwrap()
@@ -1245,6 +1293,11 @@ impl WindowInner {
     /// Private access to the WindowInner for a given window.
     pub fn from_pub(window: &crate::api::Window) -> &Self {
         &window.0
+    }
+
+    /// Provides access to the Windows' Slint context.
+    pub fn context(&self) -> &crate::SlintContext {
+        &*self.ctx
     }
 }
 
@@ -1261,8 +1314,9 @@ pub mod ffi {
 
     use super::*;
     use crate::api::{RenderingNotifier, RenderingState, SetRenderingNotifierError};
-    use crate::graphics::IntSize;
     use crate::graphics::Size;
+    use crate::graphics::{IntSize, Rgba8Pixel};
+    use crate::SharedVector;
 
     /// This enum describes a low-level access to specific graphics APIs used
     /// by the renderer.
@@ -1400,7 +1454,7 @@ pub mod ffi {
     pub unsafe extern "C" fn slint_windowrc_show_popup(
         handle: *const WindowAdapterRcOpaque,
         popup: &ItemTreeRc,
-        position: crate::graphics::Point,
+        position: LogicalPosition,
         close_policy: PopupClosePolicy,
         parent_item: &ItemRc,
     ) -> NonZeroU32 {
@@ -1686,6 +1740,25 @@ pub mod ffi {
     ) {
         let window_adapter = &*(handle as *const Rc<dyn WindowAdapter>);
         window_adapter.window().set_maximized(value)
+    }
+
+    /// Takes a snapshot of the window contents and returns it as RGBA8 encoded pixel buffer.
+    #[no_mangle]
+    pub unsafe extern "C" fn slint_windowrc_take_snapshot(
+        handle: *const WindowAdapterRcOpaque,
+        data: &mut SharedVector<Rgba8Pixel>,
+        width: &mut u32,
+        height: &mut u32,
+    ) -> bool {
+        let window_adapter = &*(handle as *const Rc<dyn WindowAdapter>);
+        if let Ok(snapshot) = window_adapter.window().take_snapshot() {
+            *data = snapshot.data.clone();
+            *width = snapshot.width();
+            *height = snapshot.height();
+            true
+        } else {
+            false
+        }
     }
 }
 

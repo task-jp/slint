@@ -5,8 +5,7 @@
 
 use lyon_path::geom::euclid::approxeq::ApproxEq;
 
-use crate::diagnostics::BuildDiagnostics;
-use crate::diagnostics::Spanned;
+use crate::diagnostics::{BuildDiagnostics, DiagnosticLevel, Spanned};
 use crate::expression_tree::*;
 use crate::langtype::ElementType;
 use crate::langtype::Type;
@@ -14,7 +13,7 @@ use crate::layout::*;
 use crate::object_tree::*;
 use crate::typeloader::TypeLoader;
 use crate::typeregister::{layout_info_type, TypeRegister};
-use smol_str::format_smolstr;
+use smol_str::{format_smolstr, SmolStr};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -43,7 +42,7 @@ pub fn lower_layouts(
     });
 
     *component.root_constraints.borrow_mut() =
-        LayoutConstraints::new(&component.root_element, diag);
+        LayoutConstraints::new(&component.root_element, diag, DiagnosticLevel::Error);
 
     recurse_elem_including_sub_components(component, &(), &mut |elem, _| {
         let component = elem.borrow().enclosing_component.upgrade().unwrap();
@@ -146,14 +145,26 @@ fn lower_grid_layout(
         dialog_button_roles: None,
     };
 
-    let layout_cache_prop_h =
-        create_new_prop(grid_layout_element, "layout-cache-h", Type::LayoutCache);
-    let layout_cache_prop_v =
-        create_new_prop(grid_layout_element, "layout-cache-v", Type::LayoutCache);
-    let layout_info_prop_h =
-        create_new_prop(grid_layout_element, "layoutinfo-h", layout_info_type());
-    let layout_info_prop_v =
-        create_new_prop(grid_layout_element, "layoutinfo-v", layout_info_type());
+    let layout_cache_prop_h = create_new_prop(
+        grid_layout_element,
+        SmolStr::new_static("layout-cache-h"),
+        Type::LayoutCache,
+    );
+    let layout_cache_prop_v = create_new_prop(
+        grid_layout_element,
+        SmolStr::new_static("layout-cache-v"),
+        Type::LayoutCache,
+    );
+    let layout_info_prop_h = create_new_prop(
+        grid_layout_element,
+        SmolStr::new_static("layoutinfo-h"),
+        layout_info_type(),
+    );
+    let layout_info_prop_v = create_new_prop(
+        grid_layout_element,
+        SmolStr::new_static("layoutinfo-v"),
+        layout_info_type(),
+    );
 
     let mut row = 0;
     let mut col = 0;
@@ -209,7 +220,7 @@ fn lower_grid_layout(
     grid_layout_element.borrow_mut().children = collected_children;
     let span = grid_layout_element.borrow().to_source_location();
     layout_cache_prop_h.element().borrow_mut().bindings.insert(
-        layout_cache_prop_h.name().into(),
+        layout_cache_prop_h.name().clone(),
         BindingExpression::new_with_span(
             Expression::SolveLayout(Layout::GridLayout(grid.clone()), Orientation::Horizontal),
             span.clone(),
@@ -217,7 +228,7 @@ fn lower_grid_layout(
         .into(),
     );
     layout_cache_prop_v.element().borrow_mut().bindings.insert(
-        layout_cache_prop_v.name().into(),
+        layout_cache_prop_v.name().clone(),
         BindingExpression::new_with_span(
             Expression::SolveLayout(Layout::GridLayout(grid.clone()), Orientation::Vertical),
             span.clone(),
@@ -225,7 +236,7 @@ fn lower_grid_layout(
         .into(),
     );
     layout_info_prop_h.element().borrow_mut().bindings.insert(
-        layout_info_prop_h.name().into(),
+        layout_info_prop_h.name().clone(),
         BindingExpression::new_with_span(
             Expression::ComputeLayoutInfo(
                 Layout::GridLayout(grid.clone()),
@@ -236,7 +247,7 @@ fn lower_grid_layout(
         .into(),
     );
     layout_info_prop_v.element().borrow_mut().bindings.insert(
-        layout_info_prop_v.name().into(),
+        layout_info_prop_v.name().clone(),
         BindingExpression::new_with_span(
             Expression::ComputeLayoutInfo(Layout::GridLayout(grid.clone()), Orientation::Vertical),
             span,
@@ -338,9 +349,12 @@ fn lower_box_layout(
         geometry: LayoutGeometry::new(layout_element),
     };
 
-    let layout_cache_prop = create_new_prop(layout_element, "layout-cache", Type::LayoutCache);
-    let layout_info_prop_v = create_new_prop(layout_element, "layoutinfo-v", layout_info_type());
-    let layout_info_prop_h = create_new_prop(layout_element, "layoutinfo-h", layout_info_type());
+    let layout_cache_prop =
+        create_new_prop(layout_element, SmolStr::new_static("layout-cache"), Type::LayoutCache);
+    let layout_info_prop_v =
+        create_new_prop(layout_element, SmolStr::new_static("layoutinfo-v"), layout_info_type());
+    let layout_info_prop_h =
+        create_new_prop(layout_element, SmolStr::new_static("layoutinfo-h"), layout_info_type());
 
     let layout_children = std::mem::take(&mut layout_element.borrow_mut().children);
 
@@ -353,7 +367,10 @@ fn lower_box_layout(
         Orientation::Vertical => ("y", "height", "x", "width"),
     };
     let pad_expr = begin_padding.clone().map(Expression::PropertyReference);
-    let mut size_expr = Expression::PropertyReference(NamedReference::new(layout_element, ortho));
+    let mut size_expr = Expression::PropertyReference(NamedReference::new(
+        layout_element,
+        SmolStr::new_static(ortho),
+    ));
     if let Some(p) = begin_padding {
         size_expr = Expression::BinaryExpression {
             lhs: Box::new(std::mem::take(&mut size_expr)),
@@ -408,7 +425,7 @@ fn lower_box_layout(
     layout_element.borrow_mut().children = layout_children;
     let span = layout_element.borrow().to_source_location();
     layout_cache_prop.element().borrow_mut().bindings.insert(
-        layout_cache_prop.name().into(),
+        layout_cache_prop.name().clone(),
         BindingExpression::new_with_span(
             Expression::SolveLayout(Layout::BoxLayout(layout.clone()), orientation),
             span.clone(),
@@ -416,7 +433,7 @@ fn lower_box_layout(
         .into(),
     );
     layout_info_prop_h.element().borrow_mut().bindings.insert(
-        layout_info_prop_h.name().into(),
+        layout_info_prop_h.name().clone(),
         BindingExpression::new_with_span(
             Expression::ComputeLayoutInfo(
                 Layout::BoxLayout(layout.clone()),
@@ -427,7 +444,7 @@ fn lower_box_layout(
         .into(),
     );
     layout_info_prop_v.element().borrow_mut().bindings.insert(
-        layout_info_prop_v.name().into(),
+        layout_info_prop_v.name().clone(),
         BindingExpression::new_with_span(
             Expression::ComputeLayoutInfo(Layout::BoxLayout(layout.clone()), Orientation::Vertical),
             span,
@@ -451,17 +468,39 @@ fn lower_dialog_layout(
         dialog_button_roles: None,
     };
     let metrics = &style_metrics.root_element;
-    grid.geometry.padding.bottom.get_or_insert(NamedReference::new(metrics, "layout-padding"));
-    grid.geometry.padding.top.get_or_insert(NamedReference::new(metrics, "layout-padding"));
-    grid.geometry.padding.left.get_or_insert(NamedReference::new(metrics, "layout-padding"));
-    grid.geometry.padding.right.get_or_insert(NamedReference::new(metrics, "layout-padding"));
-    grid.geometry.spacing.horizontal.get_or_insert(NamedReference::new(metrics, "layout-spacing"));
-    grid.geometry.spacing.vertical.get_or_insert(NamedReference::new(metrics, "layout-spacing"));
+    grid.geometry
+        .padding
+        .bottom
+        .get_or_insert(NamedReference::new(metrics, SmolStr::new_static("layout-padding")));
+    grid.geometry
+        .padding
+        .top
+        .get_or_insert(NamedReference::new(metrics, SmolStr::new_static("layout-padding")));
+    grid.geometry
+        .padding
+        .left
+        .get_or_insert(NamedReference::new(metrics, SmolStr::new_static("layout-padding")));
+    grid.geometry
+        .padding
+        .right
+        .get_or_insert(NamedReference::new(metrics, SmolStr::new_static("layout-padding")));
+    grid.geometry
+        .spacing
+        .horizontal
+        .get_or_insert(NamedReference::new(metrics, SmolStr::new_static("layout-spacing")));
+    grid.geometry
+        .spacing
+        .vertical
+        .get_or_insert(NamedReference::new(metrics, SmolStr::new_static("layout-spacing")));
 
-    let layout_cache_prop_h = create_new_prop(dialog_element, "layout-cache-h", Type::LayoutCache);
-    let layout_cache_prop_v = create_new_prop(dialog_element, "layout-cache-v", Type::LayoutCache);
-    let layout_info_prop_h = create_new_prop(dialog_element, "layoutinfo-h", layout_info_type());
-    let layout_info_prop_v = create_new_prop(dialog_element, "layoutinfo-v", layout_info_type());
+    let layout_cache_prop_h =
+        create_new_prop(dialog_element, SmolStr::new_static("layout-cache-h"), Type::LayoutCache);
+    let layout_cache_prop_v =
+        create_new_prop(dialog_element, SmolStr::new_static("layout-cache-v"), Type::LayoutCache);
+    let layout_info_prop_h =
+        create_new_prop(dialog_element, SmolStr::new_static("layoutinfo-h"), layout_info_type());
+    let layout_info_prop_v =
+        create_new_prop(dialog_element, SmolStr::new_static("layoutinfo-v"), layout_info_type());
 
     let mut main_widget = None;
     let mut button_roles = vec![];
@@ -546,7 +585,7 @@ fn lower_dialog_layout(
                                         expose_in_public_api: true,
                                         is_alias: Some(NamedReference::new(
                                             layout_child,
-                                            "clicked",
+                                            SmolStr::new_static("clicked"),
                                         )),
                                         visibility: PropertyVisibility::InOut,
                                         pure: None,
@@ -606,7 +645,7 @@ fn lower_dialog_layout(
 
     let span = dialog_element.borrow().to_source_location();
     layout_cache_prop_h.element().borrow_mut().bindings.insert(
-        layout_cache_prop_h.name().into(),
+        layout_cache_prop_h.name().clone(),
         BindingExpression::new_with_span(
             Expression::SolveLayout(Layout::GridLayout(grid.clone()), Orientation::Horizontal),
             span.clone(),
@@ -614,7 +653,7 @@ fn lower_dialog_layout(
         .into(),
     );
     layout_cache_prop_v.element().borrow_mut().bindings.insert(
-        layout_cache_prop_v.name().into(),
+        layout_cache_prop_v.name().clone(),
         BindingExpression::new_with_span(
             Expression::SolveLayout(Layout::GridLayout(grid.clone()), Orientation::Vertical),
             span.clone(),
@@ -622,7 +661,7 @@ fn lower_dialog_layout(
         .into(),
     );
     layout_info_prop_h.element().borrow_mut().bindings.insert(
-        layout_info_prop_h.name().into(),
+        layout_info_prop_h.name().clone(),
         BindingExpression::new_with_span(
             Expression::ComputeLayoutInfo(
                 Layout::GridLayout(grid.clone()),
@@ -633,7 +672,7 @@ fn lower_dialog_layout(
         .into(),
     );
     layout_info_prop_v.element().borrow_mut().bindings.insert(
-        layout_info_prop_v.name().into(),
+        layout_info_prop_v.name().clone(),
         BindingExpression::new_with_span(
             Expression::ComputeLayoutInfo(Layout::GridLayout(grid.clone()), Orientation::Vertical),
             span,
@@ -684,7 +723,7 @@ fn create_layout_item(
         fix_explicit_percent("height", &rep_comp.root_element);
 
         *rep_comp.root_constraints.borrow_mut() =
-            LayoutConstraints::new(&rep_comp.root_element, diag);
+            LayoutConstraints::new(&rep_comp.root_element, diag, DiagnosticLevel::Error);
         rep_comp.root_element.borrow_mut().child_of_layout = true;
         (
             Some(if r.is_conditional_element {
@@ -698,7 +737,7 @@ fn create_layout_item(
         (None, item_element.clone())
     };
 
-    let constraints = LayoutConstraints::new(&actual_elem, diag);
+    let constraints = LayoutConstraints::new(&actual_elem, diag, DiagnosticLevel::Error);
     Some(CreateLayoutItemResult {
         item: LayoutItem { element: item_element.clone(), constraints },
         elem: actual_elem,
@@ -783,20 +822,20 @@ pub fn check_window_layout(component: &Rc<Component>) {
     }
 }
 
-fn adjust_window_layout(component: &Rc<Component>, prop: &str) {
+fn adjust_window_layout(component: &Rc<Component>, prop: &'static str) {
     let new_prop = crate::layout::create_new_prop(
         &component.root_element,
-        &format!("fixed-{prop}"),
+        format_smolstr!("fixed-{prop}"),
         Type::LogicalLength,
     );
     {
         let mut root = component.root_element.borrow_mut();
         if let Some(b) = root.bindings.remove(prop) {
-            root.bindings.insert(new_prop.name().into(), b);
+            root.bindings.insert(new_prop.name().clone(), b);
         };
         let mut analysis = root.property_analysis.borrow_mut();
         if let Some(a) = analysis.remove(prop) {
-            analysis.insert(new_prop.name().into(), a);
+            analysis.insert(new_prop.name().clone(), a);
         };
         drop(analysis);
         root.bindings.insert(
@@ -805,7 +844,7 @@ fn adjust_window_layout(component: &Rc<Component>, prop: &str) {
         );
     }
 
-    let old_prop = NamedReference::new(&component.root_element, prop);
+    let old_prop = NamedReference::new(&component.root_element, SmolStr::new_static(prop));
     crate::object_tree::visit_all_named_references(component, &mut |nr| {
         if nr == &old_prop {
             *nr = new_prop.clone()

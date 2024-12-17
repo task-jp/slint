@@ -1,19 +1,21 @@
 // Copyright © SixtyFPS GmbH <info@slint.dev>
 // SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0
 
-use core::pin::Pin;
-use smol_str::SmolStr;
-use std::collections::{BTreeMap, HashMap};
-use std::rc::Rc;
-
 use crate::api::Value;
-use crate::dynamic_item_tree::{ErasedItemTreeBox, ErasedItemTreeDescription};
+use crate::dynamic_item_tree::{
+    ErasedItemTreeBox, ErasedItemTreeDescription, PopupMenuDescription,
+};
 use crate::SetPropertyError;
+use core::cell::RefCell;
+use core::pin::Pin;
 use i_slint_compiler::langtype::ElementType;
 use i_slint_compiler::namedreference::NamedReference;
 use i_slint_compiler::object_tree::{Component, Document, PropertyDeclaration};
 use i_slint_core::item_tree::ItemTreeVTable;
 use i_slint_core::rtti;
+use smol_str::SmolStr;
+use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 
 pub struct CompiledGlobalCollection {
     /// compiled globals
@@ -56,7 +58,27 @@ impl CompiledGlobalCollection {
     }
 }
 
-pub type GlobalStorage = HashMap<String, Pin<Rc<dyn GlobalComponent>>>;
+#[derive(Clone)]
+pub enum GlobalStorage {
+    Strong(Rc<RefCell<HashMap<String, Pin<Rc<dyn GlobalComponent>>>>>),
+    /// When the storage is held by another global
+    Weak(std::rc::Weak<RefCell<HashMap<String, Pin<Rc<dyn GlobalComponent>>>>>),
+}
+
+impl GlobalStorage {
+    pub fn get(&self, name: &str) -> Option<Pin<Rc<dyn GlobalComponent>>> {
+        match self {
+            GlobalStorage::Strong(storage) => storage.borrow().get(name).cloned(),
+            GlobalStorage::Weak(storage) => storage.upgrade().unwrap().borrow().get(name).cloned(),
+        }
+    }
+}
+
+impl Default for GlobalStorage {
+    fn default() -> Self {
+        GlobalStorage::Strong(Default::default())
+    }
+}
 
 pub enum CompiledGlobal {
     Builtin {
@@ -118,7 +140,11 @@ impl CompiledGlobal {
 }
 
 pub trait GlobalComponent {
-    fn invoke_callback(self: Pin<&Self>, callback_name: &str, args: &[Value]) -> Result<Value, ()>;
+    fn invoke_callback(
+        self: Pin<&Self>,
+        callback_name: &SmolStr,
+        args: &[Value],
+    ) -> Result<Value, ()>;
 
     fn set_callback_handler(
         self: Pin<&Self>,
@@ -133,7 +159,7 @@ pub trait GlobalComponent {
     ) -> Result<(), SetPropertyError>;
     fn get_property(self: Pin<&Self>, prop_name: &str) -> Result<Value, ()>;
 
-    fn get_property_ptr(self: Pin<&Self>, prop_name: &str) -> *const ();
+    fn get_property_ptr(self: Pin<&Self>, prop_name: &SmolStr) -> *const ();
 
     fn eval_function(self: Pin<&Self>, fn_name: &str, args: Vec<Value>) -> Result<Value, ()>;
 }
@@ -144,6 +170,10 @@ pub fn instantiate(
     globals: &mut GlobalStorage,
     root: vtable::VWeak<ItemTreeVTable, ErasedItemTreeBox>,
 ) {
+    let GlobalStorage::Strong(ref mut globals) = globals else {
+        panic!("Global storage is not strong")
+    };
+
     let instance = match description {
         CompiledGlobal::Builtin { element, .. } => {
             trait Helper {
@@ -173,13 +203,14 @@ pub fn instantiate(
                 None,
                 Some(root),
                 None,
-                globals.clone(),
+                GlobalStorage::Weak(Rc::downgrade(&globals)),
             );
             inst.run_setup_code();
             Rc::pin(GlobalComponentInstance(inst))
         }
     };
-    globals.extend(
+
+    globals.borrow_mut().extend(
         description
             .names()
             .iter()
@@ -208,16 +239,20 @@ impl GlobalComponent for GlobalComponentInstance {
         comp.description().get_property(comp.borrow(), prop_name)
     }
 
-    fn get_property_ptr(self: Pin<&Self>, prop_name: &str) -> *const () {
+    fn get_property_ptr(self: Pin<&Self>, prop_name: &SmolStr) -> *const () {
         generativity::make_guard!(guard);
         let comp = self.0.unerase(guard);
         crate::dynamic_item_tree::get_property_ptr(
-            &NamedReference::new(&comp.description().original.root_element, prop_name),
+            &NamedReference::new(&comp.description().original.root_element, prop_name.clone()),
             comp.borrow_instance(),
         )
     }
 
-    fn invoke_callback(self: Pin<&Self>, callback_name: &str, args: &[Value]) -> Result<Value, ()> {
+    fn invoke_callback(
+        self: Pin<&Self>,
+        callback_name: &SmolStr,
+        args: &[Value],
+    ) -> Result<Value, ()> {
         generativity::make_guard!(guard);
         let comp = self.0.unerase(guard);
         comp.description().invoke(comp.borrow(), callback_name, args)
@@ -274,13 +309,17 @@ impl<T: rtti::BuiltinItem + 'static> GlobalComponent for T {
         prop.get(self)
     }
 
-    fn get_property_ptr(self: Pin<&Self>, prop_name: &str) -> *const () {
+    fn get_property_ptr(self: Pin<&Self>, prop_name: &SmolStr) -> *const () {
         let prop: &dyn rtti::PropertyInfo<Self, Value> =
             Self::properties().into_iter().find(|(k, _)| *k == prop_name).unwrap().1;
         unsafe { (self.get_ref() as *const Self as *const u8).add(prop.offset()) as *const () }
     }
 
-    fn invoke_callback(self: Pin<&Self>, callback_name: &str, args: &[Value]) -> Result<Value, ()> {
+    fn invoke_callback(
+        self: Pin<&Self>,
+        callback_name: &SmolStr,
+        args: &[Value],
+    ) -> Result<Value, ()> {
         let cb = Self::callbacks().into_iter().find(|(k, _)| *k == callback_name).ok_or(())?.1;
         cb.call(self, args)
     }
@@ -305,8 +344,14 @@ fn generate(component: &Rc<Component>) -> CompiledGlobal {
         ElementType::Global => {
             generativity::make_guard!(guard);
             CompiledGlobal::Component {
-                component: crate::dynamic_item_tree::generate_item_tree(component, None, guard)
-                    .into(),
+                component: crate::dynamic_item_tree::generate_item_tree(
+                    component,
+                    None,
+                    PopupMenuDescription::Weak(Default::default()),
+                    false,
+                    guard,
+                )
+                .into(),
                 public_properties: Default::default(),
             }
         }

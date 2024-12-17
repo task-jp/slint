@@ -77,8 +77,9 @@ export component TextEdit {
     in-out property <length> viewport-height <=> scroll-view.viewport-height;
     in property <string> placeholder-text;
 
-    callback edited <=> text-input.edited-with-text;
-    callback rejected <=> text-input.rejected-with-text;
+    callback edited(text: string);
+    callback key-pressed(event: KeyEvent) -> EventResult;
+    callback key-released(event: KeyEvent) -> EventResult;
 
     accessible-role: AccessibleRole.text-input;
     accessible-enabled: root.enabled;
@@ -155,15 +156,16 @@ export component TextEdit {
             single-line: false;
             wrap: word-wrap;
 
-            // The other style use an alias to the TextEditBase, and for consistency we also need to use an alias
-            callback edited-with-text(text: string);
             edited => {
-                edited-with-text(self.text);
+                root.edited(self.text);
+            }
+            
+            key-pressed(event) => {
+                root.key-pressed(event)
             }
 
-            callback rejected-with-text(text: string);
-            rejected => {
-                rejected-with-text(self.text);
+            key-released(event) => {
+                root.key-released(event)
             }
 
             cursor-position-changed(cpos) => {

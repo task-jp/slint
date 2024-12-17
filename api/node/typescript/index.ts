@@ -619,7 +619,7 @@ function loadSlint(loadData: LoadData): Object {
  * @returns Returns an object that is immutable and provides a constructor function for each exported Window component found in the `.slint` file.
  *          For instance, in the example above, a `Main` property is available, which can be used to create instances of the `Main` component using the `new` keyword.
  *          These instances offer properties and event handlers, adhering to the {@link ComponentHandle} interface.
- *          For further information on the available properties, refer to [Instantiating A Component](../index.html#md:instantiating-a-component).
+ *          For further information on the available properties, refer to [Instantiating A Component](../index.html#instantiating-a-component).
  * @throws {@link CompileError} if errors occur during compilation.
  */
 export function loadFile(
@@ -658,7 +658,7 @@ export function loadFile(
  * @returns Returns an object that is immutable and provides a constructor function for each exported Window component found in the `.slint` file.
  *          For instance, in the example above, a `Main` property is available, which can be used to create instances of the `Main` component using the `new` keyword.
  *          These instances offer properties and event handlers, adhering to the {@link ComponentHandle} interface.
- *          For further information on the available properties, refer to [Instantiating A Component](../index.html#md:instantiating-a-component).
+ *          For further information on the available properties, refer to [Instantiating A Component](../index.html#instantiating-a-component).
  * @throws {@link CompileError} if errors occur during compilation.
  */
 export function loadSource(
@@ -950,6 +950,14 @@ export namespace private_api {
 export function initTranslations(domain: string, path: string | URL) {
     const pathname = path instanceof URL ? path.pathname : path;
     napi.initTranslations(domain, pathname);
+}
+
+/**
+ * Sets the application id for use on Wayland or X11 with [xdg](https://specifications.freedesktop.org/desktop-entry-spec/latest/)
+ * compliant window managers. This must be set before the window is shown.
+ */
+export function setXdgAppId(app_id: string) {
+    napi.setXdgAppId(app_id);
 }
 
 /**

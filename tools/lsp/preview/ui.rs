@@ -13,7 +13,7 @@ use slint_interpreter::{DiagnosticLevel, PlatformError};
 use smol_str::SmolStr;
 
 use crate::common::{self, ComponentInformation};
-use crate::preview::properties;
+use crate::preview::{properties, SelectionNotification};
 
 #[cfg(target_arch = "wasm32")]
 use crate::wasm_prelude::*;
@@ -71,6 +71,19 @@ pub fn create_ui(style: String, experimental: bool) -> Result<PreviewUi, Platfor
     api.on_unselect(super::element_selection::unselect_element);
     api.on_reselect(super::element_selection::reselect_element);
     api.on_select_at(super::element_selection::select_element_at);
+    api.on_selection_stack_at(super::element_selection::selection_stack_at);
+    api.on_filter_sort_selection_stack(super::element_selection::filter_sort_selection_stack);
+    api.on_find_selected_selection_stack_frame(|stack| {
+        stack.iter().find(|frame| frame.is_selected).unwrap_or_default()
+    });
+    api.on_select_element(|path, offset, x, y| {
+        super::element_selection::select_element_at_source_code_position(
+            PathBuf::from(path.to_string()),
+            crate::preview::TextSize::from(offset as u32),
+            Some(i_slint_core::lengths::LogicalPoint::new(x, y)),
+            SelectionNotification::Now,
+        );
+    });
     api.on_select_behind(super::element_selection::select_element_behind);
     api.on_can_drop(super::can_drop_component);
     api.on_drop(super::drop_component);
@@ -88,6 +101,33 @@ pub fn create_ui(style: String, experimental: bool) -> Result<PreviewUi, Platfor
 
     api.on_string_to_color(|s| string_to_color(&s.to_string()).unwrap_or_default());
     api.on_string_is_color(|s| string_to_color(&s.to_string()).is_some());
+    api.on_color_to_data(|c| {
+        let encoded = c.as_argb_encoded();
+
+        let a = ((encoded & 0xff000000) >> 24) as u8;
+        let r = ((encoded & 0x00ff0000) >> 16) as u8;
+        let g = ((encoded & 0x0000ff00) >> 8) as u8;
+        let b = (encoded & 0x000000ff) as u8;
+
+        ColorData {
+            a: a as i32,
+            r: r as i32,
+            g: g as i32,
+            b: b as i32,
+            text: format!(
+                "#{:08x}",
+                ((r as u32) << 24) + ((g as u32) << 16) + ((b as u32) << 8) + (a as u32)
+            )
+            .into(),
+        }
+    });
+    api.on_rgba_to_color(|r, g, b, a| {
+        if r >= 0 && r < 256 && g >= 0 && g < 256 && b >= 0 && b < 256 && a >= 0 && a < 256 {
+            slint::Color::from_argb_u8(a as u8, r as u8, g as u8, b as u8)
+        } else {
+            slint::Color::default()
+        }
+    });
 
     #[cfg(target_vendor = "apple")]
     api.set_control_key_name("command".into());
@@ -101,27 +141,6 @@ pub fn create_ui(style: String, experimental: bool) -> Result<PreviewUi, Platfor
     }
 
     Ok(ui)
-}
-
-pub fn convert_diagnostics(diagnostics: &[slint_interpreter::Diagnostic]) -> Vec<Diagnostics> {
-    diagnostics
-        .iter()
-        .filter(|d| d.level() == DiagnosticLevel::Error)
-        .map(|d| {
-            let (line, column) = d.line_column();
-
-            Diagnostics {
-                level: format!("{:?}", d.level()).into(),
-                message: d.message().into(),
-                url: d
-                    .source_file()
-                    .map(|p| p.to_string_lossy().to_string().into())
-                    .unwrap_or_default(),
-                line: line as i32,
-                column: column as i32,
-            }
-        })
-        .collect::<Vec<_>>()
 }
 
 fn extract_definition_location(ci: &ComponentInformation) -> (SharedString, SharedString) {
@@ -140,12 +159,28 @@ pub fn ui_set_uses_widgets(ui: &PreviewUi, uses_widgets: bool) {
     api.set_uses_widgets(uses_widgets);
 }
 
+pub fn set_diagnostics(ui: &PreviewUi, diagnostics: &[slint_interpreter::Diagnostic]) {
+    let summary = diagnostics.iter().fold(DiagnosticSummary::NothingDetected, |acc, d| {
+        match (acc, d.level()) {
+            (_, DiagnosticLevel::Error) => DiagnosticSummary::Errors,
+            (DiagnosticSummary::Errors, DiagnosticLevel::Warning) => DiagnosticSummary::Errors,
+            (_, DiagnosticLevel::Warning) => DiagnosticSummary::Warnings,
+            // DiagnosticLevel is non-exhaustive:
+            (acc, _) => acc,
+        }
+    });
+
+    let api = ui.global::<Api>();
+    api.set_diagnostic_summary(summary);
+}
+
 pub fn ui_set_known_components(
     ui: &PreviewUi,
     known_components: &[crate::common::ComponentInformation],
     current_component_index: usize,
 ) {
     let mut builtins_map: HashMap<String, Vec<ComponentItem>> = Default::default();
+    let mut std_widgets_map: HashMap<String, Vec<ComponentItem>> = Default::default();
     let mut path_map: HashMap<PathBuf, (SharedString, Vec<ComponentItem>)> = Default::default();
     let mut library_map: HashMap<String, Vec<ComponentItem>> = Default::default();
     let mut longest_path_prefix = PathBuf::new();
@@ -185,39 +220,33 @@ pub fn ui_set_known_components(
                 }
                 path_map.entry(path).or_insert((url, Vec::new())).1.push(item);
             }
-        } else {
+        } else if ci.is_builtin {
             builtins_map.entry(ci.category.clone()).or_default().push(item);
+        } else {
+            std_widgets_map.entry(ci.category.clone()).or_default().push(item);
         }
     }
 
-    let mut builtin_components = builtins_map
-        .drain()
-        .map(|(k, mut v)| {
-            v.sort_by_key(|i| i.name.clone());
-            let model = Rc::new(VecModel::from(v));
-            ComponentListItem {
-                category: k.into(),
-                file_url: SharedString::new(),
-                components: model.into(),
-            }
-        })
-        .collect::<Vec<_>>();
-    builtin_components.sort_by_key(|k| k.category.clone());
+    fn sort_subset(mut input: HashMap<String, Vec<ComponentItem>>) -> Vec<ComponentListItem> {
+        let mut output = input
+            .drain()
+            .map(|(k, mut v)| {
+                v.sort_by_key(|i| i.name.clone());
+                let model = Rc::new(VecModel::from(v));
+                ComponentListItem {
+                    category: k.into(),
+                    file_url: SharedString::new(),
+                    components: model.into(),
+                }
+            })
+            .collect::<Vec<_>>();
+        output.sort_by_key(|k| k.category.clone());
+        output
+    }
 
-    let mut library_components = library_map
-        .drain()
-        .map(|(k, mut v)| {
-            v.sort_by_key(|i| i.name.clone());
-            let model = Rc::new(VecModel::from(v));
-            ComponentListItem {
-                category: k.into(),
-                file_url: SharedString::new(),
-                components: model.into(),
-            }
-        })
-        .collect::<Vec<_>>();
-    library_components.sort_by_key(|k| k.category.clone());
-
+    let builtin_components = sort_subset(builtins_map);
+    let std_widgets_components = sort_subset(std_widgets_map);
+    let library_components = sort_subset(library_map);
     let mut file_components = path_map
         .drain()
         .map(|(p, (file_url, mut v))| {
@@ -237,6 +266,7 @@ pub fn ui_set_known_components(
         builtin_components.len() + library_components.len() + file_components.len(),
     );
     all_components.extend_from_slice(&builtin_components);
+    all_components.extend_from_slice(&std_widgets_components);
     all_components.extend_from_slice(&library_components);
     all_components.extend_from_slice(&file_components);
 
@@ -540,11 +570,14 @@ fn simplify_value(prop_info: &super::properties::PropertyInformation) -> Propert
                 if let Some(text) = expression
                     .child_node(SyntaxKind::QualifiedName)
                     .map(|n| i_slint_compiler::object_tree::QualifiedTypeName::from_node(n.into()))
-                    .and_then(|n| {
-                        n.to_string()
+                    .map(|n| {
+                        let n_str = n.to_string();
+                        n_str
                             .strip_prefix(&format!("{}.", enumeration.name))
                             .map(|s| s.to_string())
+                            .unwrap_or(n_str)
                     })
+                    .map(|s| s.to_string())
                 {
                     value.value_int = enumeration
                         .values
@@ -1028,6 +1061,18 @@ mod tests {
 
         let result = property_conversion_test(
             r#"export component Test { in property <ImageFit> test1: ImageFit   .    /* abc */ preserve; }"#,
+            0,
+        );
+        assert_eq!(result.kind, PropertyValueKind::Enum);
+        assert_eq!(result.value_string, "ImageFit");
+        assert_eq!(result.value_int, 3);
+        assert_eq!(result.default_selection, 0);
+        assert_eq!(result.is_translatable, false);
+
+        assert_eq!(result.visual_items.row_count(), 4);
+
+        let result = property_conversion_test(
+            r#"export component Test { in property <ImageFit> test1: /* abc */ preserve; }"#,
             0,
         );
         assert_eq!(result.kind, PropertyValueKind::Enum);

@@ -283,35 +283,6 @@ impl<'a> core::fmt::Debug for GraphicsAPI<'a> {
     }
 }
 
-/// API Version
-#[derive(Debug, Clone, PartialEq)]
-pub struct APIVersion {
-    /// Major API version
-    pub major: u8,
-    /// Minor API version
-    pub minor: u8,
-}
-
-/// This enum specifies which OpenGL API should be used.
-#[derive(Debug, Clone, PartialEq)]
-pub enum OpenGLAPI {
-    /// OpenGL
-    GL(Option<APIVersion>),
-    /// OpenGL ES
-    GLES(Option<APIVersion>),
-}
-
-/// This enum specifies which renderer should be used.
-#[derive(Debug, Clone, PartialEq)]
-pub enum SlintRenderer {
-    /// The FemtoVG renderer
-    FemtoVG,
-    /// The Skia renderer
-    Skia,
-    /// The software renderer
-    Software,
-}
-
 /// This enum describes the different rendering states, that will be provided
 /// to the parameter of the callback for `set_rendering_notifier` on the `slint::Window`.
 #[derive(Debug, Clone)]
@@ -694,8 +665,7 @@ impl Window {
 
     /// Takes a snapshot of the window contents and returns it as RGBA8 encoded pixel buffer.
     ///
-    /// Note that this function may be slow to call. Reading from the framebuffer previously
-    /// rendered, too, may take a long time.
+    /// Note that this function may be slow to call as it may need to re-render the scene.
     pub fn take_snapshot(&self) -> Result<SharedPixelBuffer<Rgba8Pixel>, PlatformError> {
         self.0.window_adapter().renderer().take_snapshot()
     }
@@ -703,6 +673,7 @@ impl Window {
 
 pub use crate::SharedString;
 
+#[i_slint_core_macros::slint_doc]
 /// This trait is used to obtain references to global singletons exported in `.slint`
 /// markup. Alternatively, you can use [`ComponentHandle::global`] to obtain access.
 ///
@@ -735,7 +706,7 @@ pub use crate::SharedString;
 /// Palette::get(&app).set_foreground_color(slint::Color::from_rgb_u8(255, 255, 255));
 /// ```
 ///
-#[doc = concat!("See also the [language documentation for global singletons](https://slint.dev/releases/", env!("CARGO_PKG_VERSION"), "/docs/slint/src/reference/globals.html) for more information.")]
+/// See also the [language documentation for global singletons](slint:globals) for more information.
 ///
 /// **Note:** Only globals that are exported or re-exported from the main .slint file will
 /// be exposed in the API
@@ -1097,4 +1068,13 @@ impl std::error::Error for PlatformError {
 #[cfg(feature = "std")]
 fn error_is_send() {
     let _: Box<dyn std::error::Error + Send + Sync + 'static> = PlatformError::NoPlatform.into();
+}
+
+/// Sets the application id for use on Wayland or X11 with [xdg](https://specifications.freedesktop.org/desktop-entry-spec/latest/)
+/// compliant window managers. This must be set before the window is shown, and has only an effect on Wayland or X11.
+pub fn set_xdg_app_id(app_id: impl Into<SharedString>) -> Result<(), PlatformError> {
+    crate::context::with_global_context(
+        || Err(crate::platform::PlatformError::NoPlatform),
+        |ctx| ctx.set_xdg_app_id(app_id.into()),
+    )
 }

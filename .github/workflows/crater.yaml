@@ -37,6 +37,22 @@ jobs:
                     - "https://github.com/arunpkio/tymoz"
                     - "https://github.com/Surrealism-All/surrealism-ui-template"
 
+                    # from crates.io
+                    - "https://codeberg.org/drendog/frametrix"
+                    - "https://github.com/hzqd/mycalc"
+                    - "https://github.com/zilongyang/rust_slint_todos"
+                    - "https://github.com/gavinshox/chess-oxide"
+                    - "https://github.com/Obscurely/falion"
+                    #- "https://github.com/abhay-n-j/warp-gui-app" (wrong edition in Cargo.toml)
+                    - "https://github.com/dimas-fw/dimas"
+                    - "https://github.com/vova-max-png/slintcalc"
+                    #- "https://github.com/moistpyro/land-calc"  (doesn't actually have an ui)
+                    - "https://github.com/clay-6/baze64"
+                    - "https://github.com/Siiir/k_means-interactive/"
+                    - "https://codeberg.org/waydeer/layer-shika"
+                    - "https://github.com/limitcool/xm"
+
+
                     - "https://github.com/Decodetalkers/launchre"
                     - "https://github.com/Decodetalkers/haruhishot"
                     - "https://github.com/smalltext/trace-slint/"
@@ -64,7 +80,6 @@ jobs:
                     - "https://github.com/jpnurmi/jpos-weather"
                     #- "https://github.com/osp-project/RizPackageTools" 404
                     - "https://github.com/xenein/CountMeDown-rs"
-                    - "https://github.com/vicanso/image-converter"
                     - "https://github.com/JeremiasMeister/rust-heightmap-generator"
                     - "https://github.com/leonardosalsi/rustop"
                     - "https://github.com/joaofl/any-serve"
@@ -83,7 +98,6 @@ jobs:
                     - "https://github.com/olishmollie/radix"
                     - "https://github.com/zivit/watchlist"
                     - "https://github.com/FelgoSDK/RustyWeather"
-                    - "https://github.com/Siiir/k_means-interactive/"
                     - "https://github.com/ThilinaTLM/docker_ui"
                     - "https://github.com/PlanetTeamSpeakk/Thermostat"
                     - "https://github.com/develcooking/Reelix"
@@ -91,26 +105,45 @@ jobs:
                     - "https://github.com/radev1924/profit-first-income-calculator-desktop"
                     - "https://github.com/JarrodDoyle/slint-fmeditor"
                     - "https://github.com/planet0104/slint-noframe-window"
-                    - "https://github.com/Obscurely/falion"
                     - "https://github.com/Dusk-Labs/kira"
-                    - "https://github.com/arihant2math/prontus"
                     - "https://github.com/TuEmb/can-viewer"
-                    - "https://github.com/limitcool/xm"
                     - "https://github.com/sloganking/quick-assistant"
-                    - "https://github.com/clay-6/baze64"
-                    - "https://github.com/zilongyang/rust_slint_todos"
                     # - "https://github.com/qhua948/anubis" # uses nightly rust
                     - "https://github.com/Surrealism-All/slimk"
+                    - "https://github.com/BounceU/car_thang"
+                    - "https://github.com/sloganking/codevis-gui"
+                    - "https://github.com/R3alCl0ud/Rust4Diva"
+                    - "https://github.com/ontley/amuseing"
+                    - "https://github.com/CzNorbi/tic_tac_toe_ui"
+                    - "https://github.com/remy2019/smtbr_gui"
+                    - "https://github.com/mrandal/PDFer"
+                    - "https://github.com/dhasoft-rs/7Seg-Slint-Widget"
+                    - "https://github.com/DraKraft/ozon-rs"
+                    - "https://github.com/SUP2Ak/Lur-Slint"
+                    - "https://github.com/foxboxpdx/melonstt"
+                    - "https://github.com/sanyexieai/me_chat"
+                    - "https://github.com/oreo3494/rockpaper.git"
+                    - "https://github.com/laycookie/record"
+                    - "https://github.com/padangpanda/password-generator-desktop"
+                    - "https://github.com/RealAdarsh/slint-guess-game"
+                    - "https://github.com/DASPRiD/vrc-osc-manager"
+                    - "https://github.com/beac0n/ruroco"
+                    - "https://github.com/Enn3Developer/n_music"
+
 
                     # Missing images
                     # - "https://github.com/rurishigeo/Probe-Downloader"
                     # - "https://github.com/Tricked-dev/stardew-mod-manager"
+                    # - "https://github.com/Erik7354/slint_minesweeper"
+
 
                     # Use our private API (eg: backend winit)
                     # - "https://github.com/Davide255/LVIE"
                     # - "https://github.com/Vadoola/Tomotroid"
                     # - "https://github.com/Horbin-Magician/rotor-rs"
                     # - "https://github.com/ilmai/plugin-things"
+                    # - "https://github.com/Hoverth/keyboardthing"
+
 
                     # - "https://codeberg.org/moire/moire"  # Broken because of other dependencies.
 
@@ -130,7 +163,7 @@ jobs:
                     #- "https://github.com/SergioGasquez/espup-slint"
 
                 sub_path: ["."]
-                os: ["ubuntu-latest"]
+                os: ["ubuntu-24.04"]
 
                 include:
                     - git_url: "https://github.com/griccardos/rusl"
@@ -139,8 +172,6 @@ jobs:
                       sub_path: "tunet-gui"
                     #- git_url: "https://github.com/DanielMadmon/tasker"  # needs "themis dep"
                     #  sub_path: "bin/tasker_gui"
-                    - git_url: "https://github.com/matthiasbeyer/distrox"
-                      sub_path: "distrox-gui"
                     # - git_url: "https://github.com/Kllngii/Wetterstation" # can't check submodules
                     #  sub_path: "wetterstation-ui"
                     - git_url: "https://github.com/plule/theremotion"
@@ -180,13 +211,26 @@ jobs:
                     - git_url: "https://github.com/planet0104/USB-Screen/"
                       extra_args: "--no-default-features --features=editor"
                       sub_path: "."
+                    - git_url: "https://github.com/newfla/daily-strip"
+                      sub_path: "."
+                      extra_args: "--no-default-features --features=slint_frontend"
+                    - git_url: "https://github.com/niqt/matrust/"
+                      sub_path: "matrust"
+                    - git_url: "https://github.com/obhq/obliteration"
+                      sub_path: "gui"
+                    - git_url: "https://github.com/jaymedavis/romboy"
+                      sub_path: "romboy"
+                    - git_url: "https://github.com/somantics/retrodungeon"
+                      sub_path: "."
+                      extra_args: "--features=femtovg"
+
         runs-on: "ubuntu-latest"
         steps:
             - uses: actions/checkout@v4
             - uses: ./.github/actions/install-linux-dependencies
               if: runner.os == 'Linux'
               with:
-                  extra-packages: libpango1.0-dev libatk1.0-dev libgtk-3-dev alsa-utils libasound2-dev libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libjack-jackd2-dev autoconf libxcb-xrm0 libxcb-xrm-dev automake  libxcb-keysyms1-dev libxcb-util0-dev libxcb-icccm4-dev libyajl-dev libstartup-notification0-dev libxcb-randr0-dev libev-dev libxcb-cursor-dev libxcb-xinerama0-dev libxcb-xkb-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev clang libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libavdevice-dev libasound2-dev pkg-config nasm libsoup2.4-dev libfuse3-dev libx11-xcb-dev
+                  extra-packages: libpango1.0-dev libatk1.0-dev libgtk-3-dev alsa-utils libasound2-dev libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libjack-jackd2-dev autoconf libxcb-xrm0 libxcb-xrm-dev automake  libxcb-keysyms1-dev libxcb-util0-dev libxcb-icccm4-dev libyajl-dev libstartup-notification0-dev libxcb-randr0-dev libev-dev libxcb-cursor-dev libxcb-xinerama0-dev libxcb-xkb-dev libxkbcommon-dev libxkbcommon-x11-dev libudev-dev clang libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libavdevice-dev libasound2-dev pkg-config nasm libsoup2.4-dev libfuse3-dev libx11-xcb-dev libarchive-dev
             # Don't use the cache because we don't run this job often, and it would cache the .cargo/config.toml with extra keys
             - uses: dtolnay/rust-toolchain@master
               with:

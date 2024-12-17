@@ -43,7 +43,7 @@ impl NotRunningEventLoop {
         let mut builder =
             builder.unwrap_or_else(|| winit::event_loop::EventLoop::with_user_event());
 
-        #[cfg(all(unix, not(target_os = "macos")))]
+        #[cfg(all(unix, not(target_vendor = "apple")))]
         {
             #[cfg(feature = "wayland")]
             {
@@ -126,7 +126,7 @@ impl EventLoopInterface for NotRunningEventLoop {
     fn event_loop(&self) -> ActiveOrInactiveEventLoop<'_> {
         ActiveOrInactiveEventLoop::Inactive(&self.instance)
     }
-    #[cfg(all(unix, not(target_os = "macos"), feature = "wayland"))]
+    #[cfg(all(unix, not(target_vendor = "apple"), feature = "wayland"))]
     fn is_wayland(&self) -> bool {
         use winit::platform::wayland::EventLoopExtWayland;
         return self.instance.is_wayland();
@@ -143,7 +143,7 @@ impl<'a> EventLoopInterface for RunningEventLoop<'a> {
     fn event_loop(&self) -> ActiveOrInactiveEventLoop<'_> {
         ActiveOrInactiveEventLoop::Active(self.active_event_loop)
     }
-    #[cfg(all(unix, not(target_os = "macos"), feature = "wayland"))]
+    #[cfg(all(unix, not(target_vendor = "apple"), feature = "wayland"))]
     fn is_wayland(&self) -> bool {
         use winit::platform::wayland::ActiveEventLoopExtWayland;
         return self.active_event_loop.is_wayland();
@@ -310,7 +310,11 @@ impl winit::application::ApplicationHandler<SlintUserEvent> for EventLoopState {
             }
 
             #[cfg(enable_accesskit)]
-            window.accesskit_adapter.borrow_mut().process_event(&_winit_window, &event);
+            window
+                .accesskit_adapter()
+                .expect("internal error: accesskit adapter must exist when window exists")
+                .borrow_mut()
+                .process_event(&_winit_window, &event);
         } else {
             return;
         }
@@ -348,7 +352,7 @@ impl winit::application::ApplicationHandler<SlintUserEvent> for EventLoopState {
             WindowEvent::KeyboardInput { event, is_synthetic, .. } => {
                 let key_code = event.logical_key;
                 // For now: Match Qt's behavior of mapping command to control and control to meta (LWin/RWin).
-                #[cfg(target_os = "macos")]
+                #[cfg(target_vendor = "apple")]
                 let key_code = match key_code {
                     winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control) => {
                         winit::keyboard::Key::Named(winit::keyboard::NamedKey::Super)
@@ -547,8 +551,16 @@ impl winit::application::ApplicationHandler<SlintUserEvent> for EventLoopState {
             #[cfg(enable_accesskit)]
             CustomEvent::Accesskit(accesskit_winit::Event { window_id, window_event }) => {
                 if let Some(window) = window_by_id(window_id) {
-                    window.accesskit_adapter.borrow_mut().process_accesskit_event(window_event);
-                };
+                    let deferred_action = window
+                        .accesskit_adapter()
+                        .expect("internal error: accesskit adapter must exist when window exists")
+                        .borrow_mut()
+                        .process_accesskit_event(window_event);
+                    // access kit adapter not borrowed anymore, now invoke the deferred action
+                    if let Some(deferred_action) = deferred_action {
+                        deferred_action.invoke(&window.window());
+                    }
+                }
             }
             #[cfg(target_arch = "wasm32")]
             CustomEvent::WakeEventLoopWorkaround => {
@@ -678,7 +690,7 @@ impl EventLoopState {
 
         let mut winit_loop = not_running_loop_instance.instance;
 
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "ios")))]
         {
             use winit::platform::run_on_demand::EventLoopExtRunOnDemand as _;
             winit_loop
@@ -702,7 +714,7 @@ impl EventLoopState {
             Ok(self)
         }
 
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(any(target_arch = "wasm32", target_os = "ios"))]
         {
             winit_loop
                 .run_app(&mut ActiveEventLoopSetterDuringEventProcessing(&mut self))
@@ -714,7 +726,7 @@ impl EventLoopState {
 
     /// Runs the event loop and renders the items in the provided `component` in its
     /// own window.
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "ios")))]
     pub fn pump_events(
         mut self,
         timeout: Option<std::time::Duration>,

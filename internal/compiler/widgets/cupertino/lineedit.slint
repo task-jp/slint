@@ -16,13 +16,17 @@ export component LineEdit {
     in-out property <string> text <=> base.text;
 
     callback accepted <=> base.accepted;
-    callback rejected <=> base.rejected;
     callback edited <=> base.edited;
+    callback key-pressed <=> base.key-pressed;
+    callback key-released <=> base.key-released;
     accessible-role: text-input;
     accessible-enabled: root.enabled;
     accessible-value <=> text;
     accessible-placeholder-text: text == "" ? placeholder-text : "";
-    accessible-action-set-value(v) => { text = v; edited(v); }
+    accessible-action-set-value(v) => {
+        text = v;
+        edited(v);
+    }
 
     public function set-selection-offsets(start: int, end: int) {
         base.set-selection-offsets(start, end);
@@ -55,12 +59,12 @@ export component LineEdit {
     forward-focus: base;
 
     states [
-        disabled when !root.enabled : {
-            base.text-color: CupertinoPalette.foreground-secondary;
+        disabled when !root.enabled: {
+            base.text-color: CupertinoPalette.foreground;
             base.placeholder-color: CupertinoPalette.foreground-secondary;
             background.background: CupertinoPalette.tertiary-control-background;
         }
-        focused when root.has-focus : {
+        focused when root.has-focus: {
             background.background: CupertinoPalette.control-background;
         }
     ]
@@ -74,9 +78,10 @@ export component LineEdit {
     }
 
     background := Rectangle {
-        background: CupertinoPalette.alternate-background;
+        background: CupertinoPalette.control-background;
         border-color: CupertinoPalette.border;
         border-width: 1px;
+        opacity: root.enabled ? 1 : 0.5;
 
         layout := HorizontalLayout {
             padding-left: 7px;

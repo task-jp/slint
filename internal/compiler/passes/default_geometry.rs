@@ -12,14 +12,14 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::diagnostics::{BuildDiagnostics, Spanned};
+use crate::diagnostics::{BuildDiagnostics, DiagnosticLevel, Spanned};
 use crate::expression_tree::{
     BindingExpression, BuiltinFunction, Expression, MinMaxOp, NamedReference, Unit,
 };
 use crate::langtype::{BuiltinElement, DefaultSizeBinding, Type};
 use crate::layout::{implicit_layout_info_call, LayoutConstraints, Orientation};
 use crate::object_tree::{Component, ElementRc};
-use smol_str::format_smolstr;
+use smol_str::{format_smolstr, SmolStr};
 use std::collections::HashMap;
 
 pub fn default_geometry(root_component: &Rc<Component>, diag: &mut BuildDiagnostics) {
@@ -187,7 +187,8 @@ fn gen_layout_info_prop(elem: &ElementRc, diag: &mut BuildDiagnostics) {
                         // FIXME: we should ideally add runtime code to merge layout info of all elements that are repeated (same as #407)
                         return None;
                     }
-                    let explicit_constraints = LayoutConstraints::new(c, diag);
+                    let explicit_constraints =
+                        LayoutConstraints::new(c, diag, DiagnosticLevel::Error);
                     let use_implicit_size = c.borrow().builtin_type().map_or(false, |b| {
                         b.default_size_binding == DefaultSizeBinding::ImplicitSize
                     });
@@ -211,19 +212,19 @@ fn gen_layout_info_prop(elem: &ElementRc, diag: &mut BuildDiagnostics) {
 
     let li_v = crate::layout::create_new_prop(
         elem,
-        "layoutinfo-v",
+        SmolStr::new_static("layoutinfo-v"),
         crate::typeregister::layout_info_type(),
     );
     let li_h = crate::layout::create_new_prop(
         elem,
-        "layoutinfo-h",
+        SmolStr::new_static("layoutinfo-h"),
         crate::typeregister::layout_info_type(),
     );
     elem.borrow_mut().layout_info_prop = Some((li_h.clone(), li_v.clone()));
     let mut expr_h = implicit_layout_info_call(elem, Orientation::Horizontal);
     let mut expr_v = implicit_layout_info_call(elem, Orientation::Vertical);
 
-    let explicit_constraints = LayoutConstraints::new(elem, diag);
+    let explicit_constraints = LayoutConstraints::new(elem, diag, DiagnosticLevel::Warning);
     if !explicit_constraints.fixed_width {
         merge_explicit_constraints(&mut expr_h, &explicit_constraints, Orientation::Horizontal);
     }
@@ -249,9 +250,9 @@ fn gen_layout_info_prop(elem: &ElementRc, diag: &mut BuildDiagnostics) {
     }
 
     let expr_v = BindingExpression::new_with_span(expr_v, elem.borrow().to_source_location());
-    li_v.element().borrow_mut().bindings.insert(li_v.name().into(), expr_v.into());
+    li_v.element().borrow_mut().bindings.insert(li_v.name().clone(), expr_v.into());
     let expr_h = BindingExpression::new_with_span(expr_h, elem.borrow().to_source_location());
-    li_h.element().borrow_mut().bindings.insert(li_h.name().into(), expr_h.into());
+    li_h.element().borrow_mut().bindings.insert(li_h.name().clone(), expr_h.into());
 }
 
 fn merge_explicit_constraints(
@@ -313,12 +314,12 @@ fn explicit_layout_info(e: &ElementRc, orientation: Orientation) -> Expression {
         Orientation::Vertical => ("height", "vertical"),
     };
     for (k, v) in [
-        ("min", format!("min-{size}")),
-        ("max", format!("max-{size}")),
-        ("preferred", format!("preferred-{size}")),
-        ("stretch", format!("{orient}-stretch")),
+        ("min", format_smolstr!("min-{size}")),
+        ("max", format_smolstr!("max-{size}")),
+        ("preferred", format_smolstr!("preferred-{size}")),
+        ("stretch", format_smolstr!("{orient}-stretch")),
     ] {
-        values.insert(k.into(), Expression::PropertyReference(NamedReference::new(e, &v)));
+        values.insert(k.into(), Expression::PropertyReference(NamedReference::new(e, v)));
     }
     values.insert("min_percent".into(), Expression::NumberLiteral(0., Unit::None));
     values.insert("max_percent".into(), Expression::NumberLiteral(100., Unit::None));
@@ -331,7 +332,7 @@ fn explicit_layout_info(e: &ElementRc, orientation: Orientation) -> Expression {
 fn fix_percent_size(
     elem: &ElementRc,
     parent: &Option<ElementRc>,
-    property: &str,
+    property: &'static str,
     diag: &mut BuildDiagnostics,
 ) -> bool {
     let elem = elem.borrow();
@@ -343,7 +344,7 @@ fn fix_percent_size(
     if binding.borrow().ty() != Type::Percent {
         let Some(parent) = parent.as_ref() else { return false };
         // Pattern match to check it was already parent.<property>
-        return matches!(&binding.borrow().expression, Expression::PropertyReference(nr) if nr.name() == property && Rc::ptr_eq(&nr.element(), parent));
+        return matches!(&binding.borrow().expression, Expression::PropertyReference(nr) if *nr.name() == property && Rc::ptr_eq(&nr.element(), parent));
     }
     let mut b = binding.borrow_mut();
     if let Some(mut parent) = parent.clone() {
@@ -352,7 +353,7 @@ fn fix_percent_size(
             parent = crate::object_tree::find_parent_element(&parent).unwrap_or(parent)
         }
         debug_assert_eq!(
-            parent.borrow().lookup_property(property).property_type,
+            parent.borrow().lookup_property(&property).property_type,
             Type::LogicalLength
         );
         let fill =
@@ -363,7 +364,10 @@ fn fix_percent_size(
                 &b.span,
                 diag,
             )),
-            rhs: Box::new(Expression::PropertyReference(NamedReference::new(&parent, property))),
+            rhs: Box::new(Expression::PropertyReference(NamedReference::new(
+                &parent,
+                SmolStr::new_static(property),
+            ))),
             op: '*',
         };
         fill
@@ -376,7 +380,7 @@ fn fix_percent_size(
 /// Generate a size property that covers the parent.
 /// Return true if it was changed
 fn make_default_100(prop: &NamedReference, parent_prop: &NamedReference) -> bool {
-    prop.element().borrow_mut().set_binding_if_not_set(prop.name().into(), || {
+    prop.element().borrow_mut().set_binding_if_not_set(prop.name().clone(), || {
         Expression::PropertyReference(parent_prop.clone())
     })
 }
@@ -385,9 +389,12 @@ fn make_default_implicit(elem: &ElementRc, property: &str) {
     let e = crate::builtin_macros::min_max_expression(
         Expression::PropertyReference(NamedReference::new(
             elem,
-            &format!("preferred-{}", property),
+            format_smolstr!("preferred-{}", property),
         )),
-        Expression::PropertyReference(NamedReference::new(elem, &format!("min-{}", property))),
+        Expression::PropertyReference(NamedReference::new(
+            elem,
+            format_smolstr!("min-{}", property),
+        )),
         MinMaxOp::Max,
     );
     elem.borrow_mut().set_binding_if_not_set(property.into(), || e);
@@ -402,34 +409,34 @@ fn make_default_implicit(elem: &ElementRc, property: &str) {
 //
 fn make_default_aspect_ratio_preserving_binding(
     elem: &ElementRc,
-    missing_size_property: &str,
-    given_size_property: &str,
+    missing_size_property: &'static str,
+    given_size_property: &'static str,
 ) {
-    if elem.borrow().is_binding_set(missing_size_property, false) {
+    if elem.borrow().is_binding_set(&missing_size_property, false) {
         return;
     }
 
     debug_assert_eq!(elem.borrow().lookup_property("source").property_type, Type::Image);
 
+    let missing_size_property = SmolStr::new_static(missing_size_property);
+    let given_size_property = SmolStr::new_static(given_size_property);
+
     let ratio = if elem.borrow().is_binding_set("source-clip-height", false) {
         Expression::BinaryExpression {
             lhs: Box::new(Expression::PropertyReference(NamedReference::new(
                 elem,
-                &format!("source-clip-{missing_size_property}"),
+                format_smolstr!("source-clip-{missing_size_property}"),
             ))),
             rhs: Box::new(Expression::PropertyReference(NamedReference::new(
                 elem,
-                &format!("source-clip-{given_size_property}"),
+                format_smolstr!("source-clip-{given_size_property}"),
             ))),
             op: '/',
         }
     } else {
         let implicit_size_var = Box::new(Expression::ReadLocalVariable {
             name: "image_implicit_size".into(),
-            ty: match BuiltinFunction::ImageSize.ty() {
-                Type::Function(function) => function.return_type.clone(),
-                _ => panic!("invalid type for ImplicitItemSize built-in function"),
-            },
+            ty: BuiltinFunction::ImageSize.ty().return_type.clone(),
         });
 
         Expression::CodeBlock(vec![
@@ -441,7 +448,8 @@ fn make_default_aspect_ratio_preserving_binding(
                         None,
                     )),
                     arguments: vec![Expression::PropertyReference(NamedReference::new(
-                        elem, "source",
+                        elem,
+                        SmolStr::new_static("source"),
                     ))],
                     source_location: None,
                 }),
@@ -449,11 +457,11 @@ fn make_default_aspect_ratio_preserving_binding(
             Expression::BinaryExpression {
                 lhs: Box::new(Expression::StructFieldAccess {
                     base: implicit_size_var.clone(),
-                    name: missing_size_property.into(),
+                    name: missing_size_property.clone(),
                 }),
                 rhs: Box::new(Expression::StructFieldAccess {
                     base: implicit_size_var,
-                    name: given_size_property.into(),
+                    name: given_size_property.clone(),
                 }),
                 op: '/',
             },
@@ -465,21 +473,28 @@ fn make_default_aspect_ratio_preserving_binding(
         op: '*',
     };
 
-    elem.borrow_mut().bindings.insert(missing_size_property.into(), RefCell::new(binding.into()));
+    elem.borrow_mut().bindings.insert(missing_size_property, RefCell::new(binding.into()));
 }
 
-fn maybe_center_in_parent(elem: &ElementRc, parent: &ElementRc, pos_prop: &str, size_prop: &str) {
-    if elem.borrow().is_binding_set(pos_prop, false) {
+fn maybe_center_in_parent(
+    elem: &ElementRc,
+    parent: &ElementRc,
+    pos_prop: &'static str,
+    size_prop: &'static str,
+) {
+    if elem.borrow().is_binding_set(&pos_prop, false) {
         return;
     }
 
+    let size_prop = SmolStr::new_static(size_prop);
     let diff = Expression::BinaryExpression {
-        lhs: Expression::PropertyReference(NamedReference::new(parent, size_prop)).into(),
+        lhs: Expression::PropertyReference(NamedReference::new(parent, size_prop.clone())).into(),
         op: '-',
         rhs: Expression::PropertyReference(NamedReference::new(elem, size_prop)).into(),
     };
 
-    elem.borrow_mut().set_binding_if_not_set(pos_prop.into(), || Expression::BinaryExpression {
+    let pos_prop = SmolStr::new_static(pos_prop);
+    elem.borrow_mut().set_binding_if_not_set(pos_prop, || Expression::BinaryExpression {
         lhs: diff.into(),
         op: '/',
         rhs: Expression::NumberLiteral(2., Unit::None).into(),
@@ -493,9 +508,9 @@ fn adjust_image_clip_rect(elem: &ElementRc, builtin: &Rc<BuiltinElement>) {
         elem.borrow().bindings.contains_key(p)
             || elem.borrow().property_analysis.borrow().get(p).map_or(false, |a| a.is_used())
     }) {
-        let source = NamedReference::new(elem, "source");
-        let x = NamedReference::new(elem, "source-clip-x");
-        let y = NamedReference::new(elem, "source-clip-y");
+        let source = NamedReference::new(elem, SmolStr::new_static("source"));
+        let x = NamedReference::new(elem, SmolStr::new_static("source-clip-x"));
+        let y = NamedReference::new(elem, SmolStr::new_static("source-clip-y"));
         let make_expr = |dim: &str, prop: NamedReference| Expression::BinaryExpression {
             lhs: Box::new(Expression::StructFieldAccess {
                 base: Box::new(Expression::FunctionCall {

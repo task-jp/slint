@@ -46,10 +46,11 @@ skia-safe = { version = "0.78.0", features = ["textlayout", "gl"] }
 glow = { version = "0.13" }
 unicode-segmentation = { version = "1.8.0" }
 
-glutin = { workspace = true, default-features = false, features = ["egl", "wgl"] }
-
 ash = { version = "^0.37.2", optional = true }
 vulkano = { version = "0.34.0", optional = true, default-features = false }
+
+[target.'cfg(not(target_os = "ios"))'.dependencies]
+glutin = { workspace = true, default-features = false, features = ["egl", "wgl"] }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 # software renderer fallback
@@ -61,13 +62,11 @@ windows = { version = "0.58.0", features = ["Win32", "Win32_System_Com", "Win32_
 skia-safe = { version = "0.78.0", features = ["d3d"] }
 
 [target.'cfg(target_vendor = "apple")'.dependencies]
-cocoa = { version = "0.25.0" }
-core-foundation = { version = "0.9.1" }
-metal = { version = "0.27.0" }
-# Use the same version of foreign-types as the metal crate uses.
-foreign-types = { version = "0.5.0" }
-objc = { version = "0.2.7" }
-core-graphics-types = { version = "0.1.1" }
+objc2 = { version = "0.5.2" }
+objc2-metal = { version = "0.2.2", features = ["MTLCommandQueue", "MTLCommandBuffer"] }
+objc2-foundation = { version = "0.2.2"}
+objc2-quartz-core = { version = "0.2.2" }
+objc2-app-kit = { version = "0.2.2" }
 skia-safe = { version = "0.78.0", features = ["metal"] }
 raw-window-metal = "1.0"
 

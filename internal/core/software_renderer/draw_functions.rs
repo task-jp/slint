@@ -281,7 +281,7 @@ pub(super) fn draw_texture_line(
             }
             PixelFormat::SignedDistanceField => {
                 const RANGE: i32 = 6;
-                let factor = (256 * 256 / delta.0) * RANGE;
+                let factor = (362 * 256 / delta.0) * RANGE; // 362 ≃ 255 * sqrt(2)
                 for pix in line_buffer {
                     let (pos, col_f, row_f) = pos(1);
                     let (col_f, row_f) = (col_f as i32, row_f as i32);
@@ -326,8 +326,9 @@ pub(super) fn draw_rounded_rectangle_line(
     struct Shifted(u32);
     impl Shifted {
         const ONE: Self = Shifted(1 << 4);
-        pub fn new(value: impl TryInto<u32>) -> Self {
-            Self(value.try_into().map_err(|_| ()).unwrap() << 4)
+        #[track_caller]
+        pub fn new(value: impl TryInto<u32> + core::fmt::Debug + Copy) -> Self {
+            Self(value.try_into().unwrap_or_else(|_| panic!("Overflow {value:?}")) << 4)
         }
         pub fn floor(self) -> u32 {
             self.0 >> 4

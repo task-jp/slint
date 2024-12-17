@@ -3,14 +3,15 @@
 
 use super::token_info::TokenInfo;
 use crate::common::DocumentCache;
+use crate::util;
 use i_slint_compiler::langtype::{ElementType, Type};
 use i_slint_compiler::object_tree::ElementRc;
-use i_slint_compiler::parser::{syntax_nodes, SyntaxNode, SyntaxToken};
+use i_slint_compiler::parser::SyntaxToken;
 use itertools::Itertools as _;
 use lsp_types::{Hover, HoverContents, MarkupContent};
 
 pub fn get_tooltip(document_cache: &mut DocumentCache, token: SyntaxToken) -> Option<Hover> {
-    let token_info = crate::language::token_info::token_info(document_cache, token)?;
+    let token_info = crate::language::token_info::token_info(document_cache, token.clone())?;
     let contents = match token_info {
         TokenInfo::Type(ty) => from_plain_text(ty.to_string()),
         TokenInfo::ElementType(e) => match e {
@@ -37,23 +38,28 @@ pub fn get_tooltip(document_cache: &mut DocumentCache, token: SyntaxToken) -> Op
         }
         TokenInfo::NamedReference(nr) => from_property_in_element(&nr.element(), nr.name())?,
         TokenInfo::EnumerationValue(v) => from_slint_code(&format!("{}.{}", v.enumeration.name, v)),
-        TokenInfo::FileName(_) => return None,
+        TokenInfo::FileName(path) => MarkupContent {
+            kind: lsp_types::MarkupKind::Markdown,
+            value: format!("`{}`", path.to_string_lossy()),
+        },
+        TokenInfo::Image(path) => MarkupContent {
+            kind: lsp_types::MarkupKind::Markdown,
+            value: format!("![{0}]({0})", path.to_string_lossy()),
+        },
         // Todo: this can happen when there is some syntax error
         TokenInfo::LocalProperty(_) | TokenInfo::LocalCallback(_) => return None,
         TokenInfo::IncompleteNamedReference(el, name) => from_property_in_type(&el, &name)?,
     };
 
-    Some(Hover { contents: HoverContents::Markup(contents), range: None })
+    Some(Hover {
+        contents: HoverContents::Markup(contents),
+        range: Some(util::token_to_lsp_range(&token)),
+    })
 }
 
 fn from_property_in_element(element: &ElementRc, name: &str) -> Option<MarkupContent> {
     if let Some(decl) = element.borrow().property_declarations.get(name) {
-        return property_tooltip(
-            &decl.property_type,
-            decl.node.as_ref(),
-            name,
-            decl.pure.unwrap_or(false),
-        );
+        return property_tooltip(&decl.property_type, name, decl.pure.unwrap_or(false));
     }
     from_property_in_type(&element.borrow().base_type, name)
 }
@@ -64,59 +70,41 @@ fn from_property_in_type(base: &ElementType, name: &str) -> Option<MarkupContent
         ElementType::Builtin(b) => {
             let resolved_name = b.native_class.lookup_alias(name).unwrap_or(name);
             let info = b.properties.get(resolved_name)?;
-            property_tooltip(&info.ty, None, name, false)
+            property_tooltip(&info.ty, name, false)
         }
         _ => None,
     }
 }
 
-fn property_tooltip(
-    ty: &Type,
-    node: Option<&SyntaxNode>,
-    name: &str,
-    pure: bool,
-) -> Option<MarkupContent> {
+fn property_tooltip(ty: &Type, name: &str, pure: bool) -> Option<MarkupContent> {
     let pure = if pure { "pure " } else { "" };
-    let ret_ty =
-        |ty: &Type| if matches!(ty, Type::Void) { String::new() } else { format!(" -> {}", ty) };
     if let Type::Callback(callback) = ty {
-        let ret = ret_ty(&callback.return_type);
-        let args =
-            if let Some(node) = node.cloned().and_then(syntax_nodes::CallbackDeclaration::new) {
-                callback
-                    .args
-                    .iter()
-                    .zip(node.CallbackDeclarationParameter())
-                    .map(|(ty, n)| {
-                        if let Some(id) = n.DeclaredIdentifier() {
-                            format!("{}: {ty}", id.text())
-                        } else {
-                            ty.to_string()
-                        }
-                    })
-                    .join(", ")
-            } else {
-                callback.args.iter().map(|x| x.to_string()).join(", ")
-            };
-        Some(from_slint_code(&format!("{pure}callback {name}({args}){ret}")))
+        let sig = signature_from_function_ty(&callback);
+        Some(from_slint_code(&format!("{pure}callback {name}{sig}")))
     } else if let Type::Function(function) = &ty {
-        let ret = ret_ty(&function.return_type);
-        let args = if let Some(node) = node.cloned().and_then(syntax_nodes::Function::new) {
-            function
-                .args
-                .iter()
-                .zip(node.ArgumentDeclaration())
-                .map(|(ty, n)| format!("{}: {ty}", n.DeclaredIdentifier().text()))
-                .join(", ")
-        } else {
-            function.args.iter().map(|x| x.to_string()).join(", ")
-        };
-        Some(from_slint_code(&format!("{pure}function {name}({args}){ret}")))
+        let sig = signature_from_function_ty(&function);
+        Some(from_slint_code(&format!("{pure}function {name}{sig}")))
     } else if ty.is_property_type() {
         Some(from_slint_code(&format!("property <{ty}> {name}")))
     } else {
         None
     }
+}
+
+fn signature_from_function_ty(f: &i_slint_compiler::langtype::Function) -> String {
+    let ret = if matches!(f.return_type, Type::Void) {
+        String::new()
+    } else {
+        format!(" -> {}", f.return_type)
+    };
+    let args = f
+        .args
+        .iter()
+        .zip(f.arg_names.iter().chain(std::iter::repeat(&Default::default())))
+        .filter(|(x, _)| *x != &Type::ElementReference)
+        .map(|(ty, name)| if !name.is_empty() { format!("{name}: {ty}") } else { ty.to_string() })
+        .join(", ");
+    format!("({args}){ret}")
 }
 
 fn from_plain_text(value: String) -> MarkupContent {
@@ -165,6 +153,7 @@ export component Test {
          root.fn_loc();
       }
       property <Eee> e: Eee.E2;
+      pointer-event(aaa) => {}
   }
   Rectangle {
     background: red;
@@ -172,6 +161,12 @@ export component Test {
   }
   StandardTableView {
     row-pointer-event => { }
+  }
+  Image {
+      source: @image-url("assets/unix-test.png");
+  }
+  Image {
+      source: @image-url("assets\\windows-test.png");
   }
 }"#;
         let (mut dc, uri, _) = crate::language::test::loaded_document_cache(source.into());
@@ -236,8 +231,13 @@ export component Test {
         assert_tooltip(
             get_tooltip(&mut dc, find_tk("row-pointer-event", 0.into())),
             // Fixme: this uses LogicalPoint instead of Point because of implementation details
-            "```slint\ncallback row-pointer-event(row-index: int, event: PointerEvent, mouse-position: LogicalPosition)\n```",
+            "```slint\ncallback row-pointer-event(row: int, event: PointerEvent, position: LogicalPosition)\n```",
         );
+        assert_tooltip(
+            get_tooltip(&mut dc, find_tk("pointer-event", 5.into())),
+            "```slint\ncallback pointer-event(event: PointerEvent)\n```",
+        );
+        // functions
         assert_tooltip(
             get_tooltip(&mut dc, find_tk("fn_glob(local-prop)", 1.into())),
             "```slint\npure function fn-glob(abc: int)\n```",
@@ -269,6 +269,32 @@ export component Test {
         assert_tooltip(
             get_tooltip(&mut dc, find_tk("the-ta := TA {", 11.into())),
             "```slint\ncomponent TA\n```",
+        );
+
+        // @image-url
+        let target_path = uri
+            .join("assets/unix-test.png")
+            .unwrap()
+            .to_file_path()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        assert_tooltip(
+            get_tooltip(&mut dc, find_tk("\"assets/unix-test.png\"", 15.into())),
+            &format!("![{target_path}]({target_path})"),
+        );
+
+        // @image-url
+        let target_path = uri
+            .join("assets/windows-test.png")
+            .unwrap()
+            .to_file_path()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        assert_tooltip(
+            get_tooltip(&mut dc, find_tk("\"assets\\\\windows-test.png\"", 15.into())),
+            &format!("![{target_path}]({target_path})"),
         );
 
         // enums

@@ -3,19 +3,21 @@
 
 // cSpell: ignore buildrs
 
+#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+
 /*!
 # Slint
 
 This crate is the main entry point for embedding user interfaces designed with
 [Slint](https://slint.rs/) in Rust programs.
 */
-#![doc = concat!("If you are new to Slint, start with the [Walk-through **tutorial**](https://slint.dev/releases/", env!("CARGO_PKG_VERSION"), "/docs/slint/src/quickstart)")]
+#![doc = i_slint_core_macros::slint_doc_str!("If you are new to Slint, start with the [Walk-through **tutorial**](slint:quickstart)")]
 /*! If you are already familiar with Slint, the following topics provide related information.
 
 ## Topics
 
 */
-#![doc = concat!("- [The Slint Language Documentation](https://slint.dev/releases/", env!("CARGO_PKG_VERSION"), "/docs/slint)")]
+#![doc = i_slint_core_macros::slint_doc_str!("- [The Slint Language Documentation](slint:index)")]
 /*! - [Type mappings between .slint and Rust](docs::type_mappings)
  - [Feature flags and backend selection](docs::cargo_features)
  - [Slint on Microcontrollers](docs::mcu)
@@ -28,7 +30,7 @@ of including them in Rust:
  - The `.slint` code is [inline in a macro](#the-slint-code-in-a-macro).
  - The `.slint` code in [external files compiled with `build.rs`](#the-slint-code-in-external-files-is-compiled-with-buildrs)
 */
-#![doc = concat!(" - The `.slint` code is loaded dynamically at run-time from the file system, by using the [interpreter API](https://slint.dev/releases/", env!("CARGO_PKG_VERSION"), "/docs/rust/slint_interpreter/).")]
+#![doc = i_slint_core_macros::slint_doc_str!(" - The `.slint` code is loaded dynamically at run-time from the file system, by using the [interpreter API](slint:rust:slint_interpreter/).")]
 /*!
 
 With the first two methods, the markup code is translated to Rust code and each component is turned into a Rust
@@ -57,8 +59,9 @@ fn main() {
 
 ### The .slint code in external files is compiled with `build.rs`
 
-When your design becomes bigger in terms of markup code, you may want move it to a dedicated*/
-#![doc = concat!("`.slint` file. It's also possible to split a `.slint` file into multiple files using [modules](https://slint.dev/releases/", env!("CARGO_PKG_VERSION"), "/docs/slint/src/language/syntax/modules.html).")]
+When your design becomes bigger in terms of markup code, you may want move it to a dedicated
+`.slint` file. */
+#![doc = i_slint_core_macros::slint_doc_str!("It's also possible to split a `.slint` file into multiple files using [modules](slint:modules).")]
 /*!Use a [build script](https://doc.rust-lang.org/cargo/reference/build-scripts.html) to compile
 your main `.slint` file:
 
@@ -171,7 +174,7 @@ To run an async function or a future, use [`spawn_local()`].
 ## Exported Global singletons
 
 */
-#![doc = concat!("When you export a [global singleton](https://slint.dev/releases/", env!("CARGO_PKG_VERSION"), "/docs/slint/src/language/syntax/globals.html) from the main file,")]
+#![doc = i_slint_core_macros::slint_doc_str!("When you export a [global singleton](slint:globals) from the main file,")]
 /*! it is also generated with the exported name. Like the main component, the generated struct have
 inherent method to access the properties and callback:
 
@@ -223,7 +226,11 @@ pub use i_slint_core::model::{
 };
 pub use i_slint_core::sharedvector::SharedVector;
 pub use i_slint_core::timers::{Timer, TimerMode};
-pub use i_slint_core::{format, string::SharedString};
+pub use i_slint_core::translations::{select_bundled_translation, SelectBundledTranslationError};
+pub use i_slint_core::{
+    format,
+    string::{SharedString, ToSharedString},
+};
 
 pub mod private_unstable_api;
 
@@ -280,7 +287,7 @@ pub fn run_event_loop_until_quit() -> Result<(), PlatformError> {
 /// Futures from the [smol](https://docs.rs/smol/latest/smol/) runtime always hand off their work to
 /// separate I/O threads that run in parallel to the Slint event loop.
 ///
-/// The [Tokio](https://docs.rs/tokio/latest/tokio/index.html) runtime is to the following constraints:
+/// The [Tokio](https://docs.rs/tokio/latest/tokio/index.html) runtime is subject to the following constraints:
 ///
 /// * Tokio futures require entering the context of a global Tokio runtime.
 /// * Tokio futures aren't guaranteed to hand off their work to separate threads and may therefore not complete, because
@@ -352,6 +359,7 @@ macro_rules! include_modules {
     };
 }
 
+#[i_slint_core_macros::slint_doc]
 /// Initialize translations when using the `gettext` feature.
 ///
 /// Call this in your main function with the path where translations are located.
@@ -364,6 +372,8 @@ macro_rules! include_modules {
 /// where `dirname` is the directory passed as an argument to this macro,
 /// `locale` is a locale name (e.g., `en`, `en_GB`, `fr`), and
 /// `crate` is the package name obtained from the `CARGO_PKG_NAME` environment variable.
+///
+/// See also the [Translation documentation](slint:translations).
 ///
 /// ### Example
 /// ```rust
@@ -399,8 +409,6 @@ macro_rules! init_translations {
 pub mod platform {
     pub use i_slint_core::platform::*;
 
-    pub use i_slint_backend_selector::PlatformBuilder;
-
     /// This module contains the [`femtovg_renderer::FemtoVGRenderer`] and related types.
     ///
     /// It is only enabled when the `renderer-femtovg` Slint feature is enabled.
@@ -419,6 +427,8 @@ pub mod platform {
     )
 ))]
 pub mod android;
+
+pub use i_slint_backend_selector::api::*;
 
 /// Helper type that helps checking that the generated code is generated for the right version
 #[doc(hidden)]

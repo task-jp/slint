@@ -6,13 +6,11 @@ use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Weak;
 
-use accesskit::{
-    Action, ActionRequest, DefaultActionVerb, Node, NodeBuilder, NodeId, Role, Toggled, Tree,
-    TreeUpdate,
-};
+use accesskit::{Action, ActionRequest, Node, NodeId, Role, Toggled, Tree, TreeUpdate};
 use i_slint_core::accessibility::{
     AccessibilityAction, AccessibleStringProperty, SupportedAccessibilityAction,
 };
+use i_slint_core::api::Window;
 use i_slint_core::item_tree::{ItemTreeRc, ItemTreeRef, ItemTreeWeak};
 use i_slint_core::items::{ItemRc, WindowItem};
 use i_slint_core::lengths::ScaleFactor;
@@ -47,6 +45,7 @@ pub struct AccessKitAdapter {
     nodes: NodeCollection,
     global_property_tracker: Pin<Box<PropertyTracker<AccessibilitiesPropertyTracker>>>,
     pending_update: bool,
+    initial_tree_sent: bool,
 }
 
 impl AccessKitAdapter {
@@ -69,6 +68,7 @@ impl AccessKitAdapter {
                 AccessibilitiesPropertyTracker { window_adapter_weak: window_adapter_weak.clone() },
             )),
             pending_update: false,
+            initial_tree_sent: false,
         }
     }
 
@@ -79,17 +79,15 @@ impl AccessKitAdapter {
     ) {
         if matches!(event, winit::event::WindowEvent::Focused(_)) {
             self.global_property_tracker.set_dirty();
-            let win = self.window_adapter_weak.clone();
-            i_slint_core::timers::Timer::single_shot(Default::default(), move || {
-                if let Some(window_adapter) = win.upgrade() {
-                    window_adapter.accesskit_adapter.borrow_mut().rebuild_tree_of_dirty_nodes();
-                };
-            });
+            self.invoke_later(|self_cell, _| self_cell.borrow_mut().rebuild_tree_of_dirty_nodes());
         }
         self.inner.process_event(window, event);
     }
 
-    pub fn process_accesskit_event(&mut self, window_event: accesskit_winit::WindowEvent) {
+    pub fn process_accesskit_event(
+        &mut self,
+        window_event: accesskit_winit::WindowEvent,
+    ) -> Option<DeferredAccessKitAction> {
         match window_event {
             accesskit_winit::WindowEvent::InitialTreeRequested => {
                 self.inner.update_if_active(|| {
@@ -98,13 +96,22 @@ impl AccessKitAdapter {
                         self.global_property_tracker.as_ref(),
                     )
                 });
+                self.initial_tree_sent = true;
+                None
             }
             accesskit_winit::WindowEvent::ActionRequested(r) => self.handle_request(r),
-            accesskit_winit::WindowEvent::AccessibilityDeactivated => (),
+            accesskit_winit::WindowEvent::AccessibilityDeactivated => {
+                self.initial_tree_sent = false;
+                None
+            }
         }
     }
 
     pub fn handle_focus_item_change(&mut self) {
+        // Ignore focus changes until an initial tree was sent, to avoid sending `tree: None`.
+        if !self.initial_tree_sent {
+            return;
+        }
         self.inner.update_if_active(|| TreeUpdate {
             nodes: vec![],
             tree: None,
@@ -112,20 +119,19 @@ impl AccessKitAdapter {
         })
     }
 
-    fn handle_request(&self, request: ActionRequest) {
-        let Some(window_adapter) = self.window_adapter_weak.upgrade() else { return };
+    fn handle_request(&self, request: ActionRequest) -> Option<DeferredAccessKitAction> {
         let a = match request.action {
-            Action::Default => AccessibilityAction::Default,
+            Action::Click => AccessibilityAction::Default,
             Action::Focus => {
-                if let Some(item) = self.nodes.item_rc_for_node_id(request.target) {
-                    WindowInner::from_pub(window_adapter.window()).set_focus_item(&item, true);
-                }
-                return;
+                return self
+                    .nodes
+                    .item_rc_for_node_id(request.target)
+                    .map(DeferredAccessKitAction::SetFocus);
             }
             Action::Decrement => AccessibilityAction::Decrement,
             Action::Increment => AccessibilityAction::Increment,
             Action::ReplaceSelectedText => {
-                let Some(accesskit::ActionData::Value(v)) = request.data else { return };
+                let Some(accesskit::ActionData::Value(v)) = request.data else { return None };
                 AccessibilityAction::ReplaceSelectedText(SharedString::from(&*v))
             }
             Action::SetValue => match request.data.unwrap() {
@@ -135,13 +141,13 @@ impl AccessKitAdapter {
                 accesskit::ActionData::NumericValue(v) => {
                     AccessibilityAction::SetValue(i_slint_core::format!("{v}"))
                 }
-                _ => return,
+                _ => return None,
             },
-            _ => return,
+            _ => return None,
         };
-        if let Some(item) = self.nodes.item_rc_for_node_id(request.target) {
-            item.accessible_action(&a);
-        }
+        self.nodes
+            .item_rc_for_node_id(request.target)
+            .map(|item| DeferredAccessKitAction::InvokeAccessibleAction(item, a))
     }
 
     pub fn reload_tree(&mut self) {
@@ -149,16 +155,14 @@ impl AccessKitAdapter {
             return;
         }
         self.pending_update = true;
-        let win = self.window_adapter_weak.clone();
-        i_slint_core::timers::Timer::single_shot(Default::default(), move || {
-            if let Some(window_adapter) = win.upgrade() {
-                let mut self_ = window_adapter.accesskit_adapter.borrow_mut();
-                let self_ = &mut *self_;
-                self_.pending_update = false;
-                self_.inner.update_if_active(|| {
-                    self_.nodes.build_new_tree(&win, self_.global_property_tracker.as_ref())
-                })
-            };
+
+        self.invoke_later(|self_cell, win| {
+            let mut self_ = self_cell.borrow_mut();
+            let self_ = &mut *self_;
+            self_.pending_update = false;
+            self_.inner.update_if_active(|| {
+                self_.nodes.build_new_tree(&win, self_.global_property_tracker.as_ref())
+            })
         });
     }
 
@@ -191,12 +195,9 @@ impl AccessKitAdapter {
                         let scale_factor = ScaleFactor::new(window.scale_factor());
                         let item = self.nodes.item_rc_for_node_id(cached_node.id)?;
 
-                        let mut builder =
-                            self.nodes.build_node_without_children(&item, scale_factor);
+                        let mut node = self.nodes.build_node_without_children(&item, scale_factor);
 
-                        builder.set_children(cached_node.children.clone());
-
-                        let node = builder.build();
+                        node.set_children(cached_node.children.clone());
 
                         Some((cached_node.id, node))
                     })?
@@ -209,6 +210,19 @@ impl AccessKitAdapter {
                 }
             })
         })
+    }
+
+    fn invoke_later(
+        &self,
+        callback: impl FnOnce(&std::cell::RefCell<Self>, Weak<WinitWindowAdapter>) + 'static,
+    ) {
+        let win = self.window_adapter_weak.clone();
+        i_slint_core::timers::Timer::single_shot(Default::default(), move || {
+            WinitWindowAdapter::with_access_kit_adapter_from_weak_window_adapter(
+                win.clone(),
+                move |self_cell| callback(self_cell, win),
+            );
+        });
     }
 }
 
@@ -294,14 +308,14 @@ impl NodeCollection {
     ) -> NodeId {
         let tracker = Box::pin(PropertyTracker::default());
 
-        let mut builder =
+        let mut node =
             tracker.as_ref().evaluate(|| self.build_node_without_children(&item, scale_factor));
 
         let children = i_slint_core::accessibility::accessible_descendents(&item)
             .map(|child| self.build_node_for_item_recursively(child, nodes, scale_factor))
             .collect::<Vec<NodeId>>();
 
-        builder.set_children(children.clone());
+        node.set_children(children.clone());
 
         let component = item.item_tree();
         let component_ptr = ItemTreeRef::as_ptr(ItemTreeRc::borrow(component));
@@ -314,7 +328,6 @@ impl NodeCollection {
 
         let id = self.encode_item_node_id(&item).unwrap();
         self.all_nodes.push(CachedNode { id, children, tracker });
-        let node = builder.build();
 
         nodes.push((id, node));
 
@@ -357,7 +370,7 @@ impl NodeCollection {
         }
     }
 
-    fn build_node_without_children(&self, item: &ItemRc, scale_factor: ScaleFactor) -> NodeBuilder {
+    fn build_node_without_children(&self, item: &ItemRc, scale_factor: ScaleFactor) -> Node {
         let is_checkable = item
             .accessible_string_property(AccessibleStringProperty::Checkable)
             .is_some_and(|x| x == "true");
@@ -394,24 +407,28 @@ impl NodeCollection {
             )
         };
 
-        let mut builder = NodeBuilder::new(role);
+        let mut node = Node::new(role);
 
         if let Some(label) = label {
-            builder.set_name(label);
+            if role == Role::Label {
+                node.set_value(label);
+            } else {
+                node.set_label(label);
+            }
         }
 
         if item
             .accessible_string_property(AccessibleStringProperty::Enabled)
             .is_some_and(|x| x != "true")
         {
-            builder.set_disabled();
+            node.set_disabled();
         }
 
         let geometry = item.geometry();
         let absolute_origin = item.map_to_window(geometry.origin);
         let physical_origin = (absolute_origin * scale_factor).cast::<f64>();
         let physical_size = (geometry.size * scale_factor).cast::<f64>();
-        builder.set_bounds(accesskit::Rect {
+        node.set_bounds(accesskit::Rect {
             x0: physical_origin.x,
             y0: physical_origin.y,
             x1: physical_origin.x + physical_size.width,
@@ -423,13 +440,13 @@ impl NodeCollection {
                 .accessible_string_property(AccessibleStringProperty::Checked)
                 .is_some_and(|x| x == "true");
         if is_checkable {
-            builder.set_toggled(if is_checked { Toggled::True } else { Toggled::False });
+            node.set_toggled(if is_checked { Toggled::True } else { Toggled::False });
         }
 
         if let Some(description) =
             item.accessible_string_property(AccessibleStringProperty::Description)
         {
-            builder.set_description(description.to_string());
+            node.set_description(description.to_string());
         }
 
         if matches!(
@@ -442,33 +459,33 @@ impl NodeCollection {
                 | Role::SpinButton
                 | Role::Tab
         ) {
-            builder.add_action(Action::Focus);
+            node.add_action(Action::Focus);
         }
 
         if let Some(min) = item
             .accessible_string_property(AccessibleStringProperty::ValueMinimum)
             .and_then(|min| min.parse().ok())
         {
-            builder.set_min_numeric_value(min);
+            node.set_min_numeric_value(min);
         }
         if let Some(max) = item
             .accessible_string_property(AccessibleStringProperty::ValueMaximum)
             .and_then(|max| max.parse().ok())
         {
-            builder.set_max_numeric_value(max);
+            node.set_max_numeric_value(max);
         }
         if let Some(step) = item
             .accessible_string_property(AccessibleStringProperty::ValueStep)
             .and_then(|step| step.parse().ok())
         {
-            builder.set_numeric_value_step(step);
+            node.set_numeric_value_step(step);
         }
 
         if let Some(value) = item.accessible_string_property(AccessibleStringProperty::Value) {
             if let Ok(value) = value.parse() {
-                builder.set_numeric_value(value);
+                node.set_numeric_value(value);
             } else {
-                builder.set_value(value.to_string());
+                node.set_value(value.to_string());
             }
         }
 
@@ -476,69 +493,58 @@ impl NodeCollection {
             .accessible_string_property(AccessibleStringProperty::PlaceholderText)
             .filter(|x| !x.is_empty())
         {
-            builder.set_placeholder(placeholder.to_string());
+            node.set_placeholder(placeholder.to_string());
         }
 
         if item
-            .accessible_string_property(AccessibleStringProperty::Selectable)
+            .accessible_string_property(AccessibleStringProperty::ItemSelectable)
             .is_some_and(|x| x == "true")
         {
-            builder.set_selected(
-                item.accessible_string_property(AccessibleStringProperty::Selected)
+            node.set_selected(
+                item.accessible_string_property(AccessibleStringProperty::ItemSelected)
                     .is_some_and(|x| x == "true"),
             );
         }
 
         if let Some(position_in_set) = item
-            .accessible_string_property(AccessibleStringProperty::PositionInSet)
+            .accessible_string_property(AccessibleStringProperty::ItemIndex)
             .and_then(|s| s.parse::<usize>().ok())
         {
-            builder.set_position_in_set(position_in_set);
-        }
-        if let Some(size_of_set) = item
-            .accessible_string_property(AccessibleStringProperty::SizeOfSet)
-            .and_then(|s| s.parse::<usize>().ok())
-        {
-            builder.set_size_of_set(size_of_set);
+            node.set_position_in_set(position_in_set);
+            let mut item = item.clone();
+            while let Some(parent) = item.parent_item() {
+                if !parent.is_accessible() {
+                    item = parent;
+                    continue;
+                }
+                if let Some(size_of_set) = parent
+                    .accessible_string_property(AccessibleStringProperty::ItemCount)
+                    .and_then(|s| s.parse::<usize>().ok())
+                {
+                    node.set_size_of_set(size_of_set);
+                }
+                break;
+            }
         }
 
         let supported = item.supported_accessibility_actions();
         if supported.contains(SupportedAccessibilityAction::Default) {
-            builder.add_action(accesskit::Action::Default);
-            builder.set_default_action_verb(if is_checked {
-                DefaultActionVerb::Uncheck
-            } else if is_checkable {
-                DefaultActionVerb::Check
-            } else {
-                DefaultActionVerb::Click
-            });
+            node.add_action(accesskit::Action::Click);
         }
         if supported.contains(SupportedAccessibilityAction::Decrement) {
-            builder.add_action(accesskit::Action::Decrement);
-            if builder.default_action_verb().is_none() {
-                builder.set_default_action_verb(DefaultActionVerb::Click);
-            }
+            node.add_action(accesskit::Action::Decrement);
         }
         if supported.contains(SupportedAccessibilityAction::Increment) {
-            builder.add_action(accesskit::Action::Increment);
-            if builder.default_action_verb().is_none() {
-                builder.set_default_action_verb(DefaultActionVerb::Click);
-            }
+            node.add_action(accesskit::Action::Increment);
         }
         if supported.contains(SupportedAccessibilityAction::SetValue) {
-            builder.add_action(accesskit::Action::SetValue);
-            if builder.default_action_verb().is_none() {
-                builder.set_default_action_verb(DefaultActionVerb::Focus);
-            }
+            node.add_action(accesskit::Action::SetValue);
         }
         if supported.contains(SupportedAccessibilityAction::ReplaceSelectedText) {
-            builder.add_action(accesskit::Action::ReplaceSelectedText);
-            if builder.default_action_verb().is_none() {
-                builder.set_default_action_verb(DefaultActionVerb::Focus);
-            }
+            node.add_action(accesskit::Action::ReplaceSelectedText);
         }
 
-        builder
+        node
     }
 }
 
@@ -550,9 +556,12 @@ impl i_slint_core::properties::PropertyDirtyHandler for AccessibilitiesPropertyT
     fn notify(self: Pin<&Self>) {
         let win = self.window_adapter_weak.clone();
         i_slint_core::timers::Timer::single_shot(Default::default(), move || {
-            if let Some(window_adapter) = win.upgrade() {
-                window_adapter.accesskit_adapter.borrow_mut().rebuild_tree_of_dirty_nodes();
-            };
+            WinitWindowAdapter::with_access_kit_adapter_from_weak_window_adapter(
+                win,
+                |self_cell| {
+                    self_cell.borrow_mut().rebuild_tree_of_dirty_nodes();
+                },
+            );
         })
     }
 }
@@ -566,5 +575,23 @@ struct CachedNode {
 impl From<accesskit_winit::Event> for SlintUserEvent {
     fn from(value: accesskit_winit::Event) -> Self {
         SlintUserEvent(crate::event_loop::CustomEvent::Accesskit(value))
+    }
+}
+
+pub enum DeferredAccessKitAction {
+    SetFocus(ItemRc),
+    InvokeAccessibleAction(ItemRc, AccessibilityAction),
+}
+
+impl DeferredAccessKitAction {
+    pub fn invoke(&self, window: &Window) {
+        match self {
+            DeferredAccessKitAction::SetFocus(item) => {
+                WindowInner::from_pub(window).set_focus_item(item, true);
+            }
+            DeferredAccessKitAction::InvokeAccessibleAction(item, accessibility_action) => {
+                item.accessible_action(accessibility_action);
+            }
+        }
     }
 }

@@ -105,7 +105,7 @@ cpp! {{
         void paintEvent(QPaintEvent *) override {
             if (!rust_window)
                 return;
-            auto painter = std::unique_ptr<QPainter>(new QPainter(this));
+           auto painter = std::unique_ptr<QPainter>(new QPainter(this));
             painter->setClipRect(rect());
             painter->setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
             QPainterPtr *painter_ptr = &painter;
@@ -1799,6 +1799,15 @@ impl WindowAdapter for QtWindow {
     }
 
     fn set_visible(&self, visible: bool) -> Result<(), PlatformError> {
+        if let Some(xdg_app_id) = WindowInner::from_pub(&self.window)
+            .xdg_app_id()
+            .map(|s| qttypes::QString::from(s.as_str()))
+        {
+            cpp! {unsafe [xdg_app_id as "QString"] {
+                QGuiApplication::setDesktopFileName(xdg_app_id);
+            }};
+        }
+
         if visible {
             let widget_ptr = self.widget_ptr();
             cpp! {unsafe [widget_ptr as "QWidget*"] {
@@ -1943,7 +1952,7 @@ impl WindowAdapter for QtWindow {
             widget_ptr->setWindowFlag(Qt::FramelessWindowHint, no_frame);
             widget_ptr->setWindowFlag(Qt::WindowStaysOnTopHint, always_on_top);
 
-            {
+                        {
                 // Depending on the request, we either set or clear the bits.
                 // See also: https://doc.qt.io/qt-6/qt.html#WindowState-enum
                 auto state = widget_ptr->windowState();

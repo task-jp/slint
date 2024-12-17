@@ -8,9 +8,10 @@ When adding an item or a property, it needs to be kept in sync with different pl
 Lookup the [`crate::items`] module documentation.
 */
 use super::{
-    FontMetrics, InputType, Item, ItemConsts, ItemRc, ItemRef, KeyEventResult, KeyEventType,
-    PointArg, PointerEventButton, RenderingResult, TextHorizontalAlignment, TextOverflow,
-    TextStrokeStyle, TextVerticalAlignment, TextWrap, VoidArg,
+    EventResult, FontMetrics, InputType, Item, ItemConsts, ItemRc, ItemRef, KeyEventArg,
+    KeyEventResult, KeyEventType, PointArg, PointerEventButton, RenderingResult,
+    TextHorizontalAlignment, TextOverflow, TextStrokeStyle, TextVerticalAlignment, TextWrap,
+    VoidArg,
 };
 use crate::graphics::{Brush, Color, FontRequest};
 use crate::input::{
@@ -490,9 +491,10 @@ pub struct TextInput {
     pub has_focus: Property<bool>,
     pub enabled: Property<bool>,
     pub accepted: Callback<VoidArg>,
-    pub rejected: Callback<VoidArg>,
     pub cursor_position_changed: Callback<PointArg>,
     pub edited: Callback<VoidArg>,
+    pub key_pressed: Callback<KeyEventArg, EventResult>,
+    pub key_released: Callback<KeyEventArg, EventResult>,
     pub single_line: Property<bool>,
     pub read_only: Property<bool>,
     pub preedit_text: Property<SharedString>,
@@ -685,6 +687,13 @@ impl Item for TextInput {
         }
         match event.event_type {
             KeyEventType::KeyPressed => {
+                // invoke first key_pressed callback to give the developer/designer the possibility to implement a custom behaviour
+                if Self::FIELD_OFFSETS.key_pressed.apply_pin(self).call(&(event.clone(),))
+                    == EventResult::Accept
+                {
+                    return KeyEventResult::EventAccepted;
+                }
+
                 match event.text_shortcut() {
                     Some(text_shortcut) if !self.read_only() => match text_shortcut {
                         TextShortcut::Move(direction) => {
@@ -746,9 +755,6 @@ impl Item for TextInput {
                     if keycode == key_codes::Return && !self.read_only() && self.single_line() {
                         Self::FIELD_OFFSETS.accepted.apply_pin(self).call(&());
                         return KeyEventResult::EventAccepted;
-                    } else if keycode == key_codes::Escape && !self.read_only() {
-                        Self::FIELD_OFFSETS.rejected.apply_pin(self).call(&());
-                        return KeyEventResult::EventAccepted;
                     }
                 }
 
@@ -795,20 +801,6 @@ impl Item for TextInput {
                     }
                 }
 
-                let input_type = self.input_type();
-                if input_type == InputType::Number
-                    && !event.text.as_str().chars().all(|ch| ch.is_ascii_digit())
-                {
-                    return KeyEventResult::EventIgnored;
-                }
-                if input_type == InputType::Decimal {
-                    let text = self.text().clone() + event.text.as_str();
-                    if text.as_str() != "." && text.as_str() != "-" && text.parse::<f64>().is_err()
-                    {
-                        return KeyEventResult::EventIgnored;
-                    }
-                }
-
                 if self.read_only() || event.modifiers.control {
                     return KeyEventResult::EventIgnored;
                 }
@@ -818,6 +810,21 @@ impl Item for TextInput {
                     let text = self.text();
                     (self.cursor_position(&text), self.anchor_position(&text))
                 };
+
+                let input_type = self.input_type();
+                if input_type == InputType::Number
+                    && !event.text.as_str().chars().all(|ch| ch.is_ascii_digit())
+                {
+                    return KeyEventResult::EventIgnored;
+                } else if input_type == InputType::Decimal {
+                    let (a, c) = self.selection_anchor_and_cursor();
+                    let text = self.text();
+                    let text = [&text[..a], event.text.as_str(), &text[c..]].concat();
+                    if text.as_str() != "." && text.as_str() != "-" && text.parse::<f64>().is_err()
+                    {
+                        return KeyEventResult::EventIgnored;
+                    }
+                }
 
                 self.delete_selection(window_adapter, self_rc, TextChangeNotify::SkipCallbacks);
 
@@ -854,6 +861,16 @@ impl Item for TextInput {
 
                 KeyEventResult::EventAccepted
             }
+            KeyEventType::KeyReleased => {
+                return match Self::FIELD_OFFSETS
+                    .key_released
+                    .apply_pin(self)
+                    .call(&(event.clone(),))
+                {
+                    EventResult::Accept => KeyEventResult::EventAccepted,
+                    EventResult::Reject => KeyEventResult::EventIgnored,
+                };
+            }
             KeyEventType::UpdateComposition | KeyEventType::CommitComposition => {
                 let cursor = self.cursor_position(&self.text()) as i32;
                 self.preedit_text.set(event.preedit_text.clone());
@@ -889,7 +906,6 @@ impl Item for TextInput {
                 }
                 KeyEventResult::EventAccepted
             }
-            _ => KeyEventResult::EventIgnored,
         }
     }
 
@@ -996,6 +1012,7 @@ impl core::convert::TryFrom<char> for TextCursorDirection {
     }
 }
 
+#[derive(PartialEq)]
 enum AnchorMode {
     KeepAnchor,
     MoveAnchor,
@@ -1136,6 +1153,7 @@ impl TextInput {
             return false;
         }
 
+        let (anchor, cursor) = self.selection_anchor_and_cursor();
         let last_cursor_pos = self.cursor_position(&text);
 
         let mut grapheme_cursor =
@@ -1156,10 +1174,22 @@ impl TextInput {
 
         let new_cursor_pos = match direction {
             TextCursorDirection::Forward => {
-                grapheme_cursor.next_boundary(&text, 0).ok().flatten().unwrap_or_else(|| text.len())
+                if anchor == cursor || anchor_mode == AnchorMode::KeepAnchor {
+                    grapheme_cursor
+                        .next_boundary(&text, 0)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| text.len())
+                } else {
+                    cursor
+                }
             }
             TextCursorDirection::Backward => {
-                grapheme_cursor.prev_boundary(&text, 0).ok().flatten().unwrap_or(0)
+                if anchor == cursor || anchor_mode == AnchorMode::KeepAnchor {
+                    grapheme_cursor.prev_boundary(&text, 0).ok().flatten().unwrap_or(0)
+                } else {
+                    anchor
+                }
             }
             TextCursorDirection::NextLine => {
                 reset_preferred_x_pos = false;

@@ -1,5 +1,5 @@
 <!-- Copyright © SixtyFPS GmbH <info@slint.dev> ; SPDX-License-Identifier: MIT -->
-
+<!-- cSpell: ignore xkbcommon fontconfig vcpkg DCMAKE RUSTDOCFLAGS cppdocs frontends -->
 # Slint Build Guide
 
 This page explains how to build and test Slint.
@@ -247,7 +247,7 @@ cargo xtask slintdocs --show-warnings
 Run the following command to generate the documentation using rustdoc in the `target/doc/` sub-folder:
 
 ```sh
-RUSTDOCFLAGS="--html-in-header=$PWD/docs/resources/slint-docs-preview.html --html-in-header=$PWD/docs/resources/slint-docs-highlight.html" cargo doc --no-deps --features slint/document-features,slint/log
+RUSTDOCFLAGS="--html-in-header=$PWD/docs/astro/src/utils/slint-docs-preview.html --html-in-header=$PWD/docs/astro/src/utils/slint-docs-highlight.html" cargo doc --no-deps --features slint/document-features,slint/log
 ```
 
 Note: `--html-in-header` arguments passed to rustdoc via `RUSTDOCFLAGS` are used to enable syntax highlighting and live-preview for Slint example snippets.

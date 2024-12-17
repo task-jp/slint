@@ -316,7 +316,7 @@ long int model_length(const std::shared_ptr<M> &model)
 } // namespace private_api
 
 /// \rst
-/// A Model is providing Data for |Repetition|_ repetitions or |ListView|_ elements of the
+/// A Model is providing Data for Slint |Models|_ or |ListView|_ elements of the
 /// :code:`.slint` language
 /// \endrst
 template<typename ModelData>
@@ -1318,6 +1318,16 @@ inline void update_all_translations()
 }
 #endif
 
+/// Select the current translation language when using bundled translations.
+/// This function requires that the application's `.slint` file was compiled with bundled
+/// translations. It must be called after creating the first component. Returns true if the language
+/// was selected; false if the language was not found in the list of bundled translations.
+inline bool select_bundled_translation(std::string_view language)
+{
+    return cbindgen_private::slint_translate_select_bundled_translation(
+            slint::private_api::string_to_slice(language));
+}
+
 #if !defined(DOXYGEN)
 cbindgen_private::Flickable::Flickable()
 {
@@ -1511,5 +1521,15 @@ void blocking_invoke_from_event_loop(Functor f)
 }
 #    endif
 #endif
+
+/// Sets the application id for use on Wayland or X11 with
+/// [xdg](https://specifications.freedesktop.org/desktop-entry-spec/latest/) compliant window
+/// managers. This must be set before the window is shown.
+inline void set_xdg_app_id(std::string_view xdg_app_id)
+{
+    private_api::assert_main_thread();
+    SharedString s = xdg_app_id;
+    cbindgen_private::slint_set_xdg_app_id(&s);
+}
 
 } // namespace slint
