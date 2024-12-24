@@ -1284,7 +1284,10 @@ pub(crate) mod ffi {
 
     #[cfg(feature = "image-decoders")]
     #[no_mangle]
-    pub unsafe extern "C" fn slint_image_load_from_data_url(data_url: &SharedString, image: *mut Image) {
+    pub unsafe extern "C" fn slint_image_load_from_data_url(
+        data_url: &SharedString,
+        image: *mut Image,
+    ) {
         core::ptr::write(
             image,
             Image::load_from_data_url(data_url.as_str()).unwrap_or(Image::default()),
