@@ -299,9 +299,12 @@ impl Color {
 
         let channels_factor = (combined_weight + 1.0) / 2.0;
 
-        let red = lerp(self.red, other.red, channels_factor);
-        let green = lerp(self.green, other.green, channels_factor);
-        let blue = lerp(self.blue, other.blue, channels_factor);
+        let rgb1 = [self.red, self.green, self.blue];
+        let rgb2 = [other.red, other.green, other.blue];
+        let [red, green, blue] = mixbox::lerp(&rgb1, &rgb2, channels_factor);
+        // let red = lerp(self.red, other.red, channels_factor);
+        // let green = lerp(self.green, other.green, channels_factor);
+        // let blue = lerp(self.blue, other.blue, channels_factor);
 
         let alpha = lerp(self.alpha, other.alpha, original_factor);
 
