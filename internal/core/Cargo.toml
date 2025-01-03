@@ -79,6 +79,7 @@ unicode-script = { version = "0.5.7", optional = true }
 integer-sqrt = { version = "0.1.5" }
 bytemuck = { workspace = true, optional = true, features = ["derive"] }
 sys-locale = { version = "0.3.2", optional = true }
+mixbox = "2.0.0"
 
 image = { workspace = true, optional = true, default-features = false }
 clru = { workspace = true, optional = true }

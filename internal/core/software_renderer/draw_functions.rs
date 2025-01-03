@@ -619,18 +619,20 @@ pub(super) fn draw_gradient_line(
     let db = (((color2.blue as i32 - color1.blue as i32) * start) << 15) / (255 * size_x);
     let da = (((color2.alpha as i32 - color1.alpha as i32) * start) << 15) / (255 * size_x);
 
+    let rgb1 = [color1.red, color1.green, color1.blue];
+    let rgb2 = [color2.red, color2.green, color2.blue];
     let mut r = ((color1.red as u32) << 15).wrapping_add((x * dr) as _);
     let mut g = ((color1.green as u32) << 15).wrapping_add((x * dg) as _);
     let mut b = ((color1.blue as u32) << 15).wrapping_add((x * db) as _);
     let mut a = ((color1.alpha as u32) << 15).wrapping_add((x * da) as _);
 
     if color1.alpha == 255 && color2.alpha == 255 {
+        let dx = 1.0 / size_x as f32;
+        let mut x = 0.0;
         buffer.fill_with(|| {
-            let pix = TargetPixel::from_rgb((r >> 15) as u8, (g >> 15) as u8, (b >> 15) as u8);
-            r = r.wrapping_add(dr as _);
-            g = g.wrapping_add(dg as _);
-            b = b.wrapping_add(db as _);
-            pix
+            let rgb = mixbox::lerp(&rgb1, &rgb2, x);
+            x = x + dx;
+            TargetPixel::from_rgb(rgb[0], rgb[1], rgb[2])
         })
     } else {
         for pix in buffer {
