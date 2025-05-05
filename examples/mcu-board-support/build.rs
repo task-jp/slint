@@ -10,6 +10,8 @@ fn main() -> std::io::Result<()> {
             board_config_path = Some([env!("CARGO_MANIFEST_DIR"), "pico_st7789", "board_config.toml"].iter().collect());
         } else if #[cfg(feature = "pico2-st7789")] {
             board_config_path = Some([env!("CARGO_MANIFEST_DIR"), "pico2_st7789", "board_config.toml"].iter().collect());
+        } else if #[cfg(feature = "waveshare-rp2040-touch-lcd-1-69")] {
+            board_config_path = Some([env!("CARGO_MANIFEST_DIR"), "waveshare_rp2040_touch_lcd_1_69", "board_config.toml"].iter().collect());
         } else if #[cfg(feature = "stm32h735g")] {
             board_config_path = Some([env!("CARGO_MANIFEST_DIR"), "stm32h735g", "board_config.toml"].iter().collect());
         } else if #[cfg(feature = "stm32u5g9j-dk2")] {
