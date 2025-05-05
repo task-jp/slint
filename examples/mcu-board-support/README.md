@@ -215,3 +215,28 @@ To compile and run the demo:
 ```sh
 CARGO_PROFILE_RELEASE_OPT_LEVEL=s cargo +esp run -p printerdemo_mcu --target xtensa-esp32s3-none-elf --no-default-features --features=mcu-board-support/esp32-s3-box-3 --release --config examples/mcu-board-support/esp32_s3_box_3/cargo-config.toml
 ```
+
+### Waveshare RP2040 Touch LCD 1.69
+
+This board features a RP2040 microcontroller with a 1.69" 320x240 ST7789 display and CST816S capacitive touch controller.
+
+Build the demo with:
+
+```sh
+cargo build -p printerdemo_mcu --no-default-features --features=mcu-board-support/waveshare_rp2040_touch_lcd_1_69 --target=thumbv6m-none-eabi --release
+```
+
+You can flash it using the same method as the Raspberry Pi Pico with elf2uf2-rs:
+
+```sh
+# If you're on Linux: mount the device
+udisksctl mount -b /dev/sda1
+# upload
+elf2uf2-rs -d target/thumbv6m-none-eabi/release/printerdemo_mcu
+```
+
+Or use probe-rs if you have a debug probe connected:
+
+```sh
+CARGO_TARGET_THUMBV6M_NONE_EABI_LINKER="flip-link" CARGO_TARGET_THUMBV6M_NONE_EABI_RUNNER="probe-rs run --chip RP2040" cargo run -p printerdemo_mcu --no-default-features --features=mcu-board-support/waveshare_rp2040_touch_lcd_1_69 --target=thumbv6m-none-eabi --release
+```

@@ -14,6 +14,11 @@ mod pico_st7789;
 #[cfg(feature = "pico-st7789")]
 pub use pico_st7789::*;
 
+#[cfg(feature = "waveshare-rp2040-touch-lcd-1-69")]
+mod waveshare_rp2040_touch_lcd_1_69;
+#[cfg(feature = "waveshare-rp2040-touch-lcd-1-69")]
+pub use waveshare_rp2040_touch_lcd_1_69::*;
+
 #[cfg(feature = "pico2-st7789")]
 mod pico2_st7789;
 #[cfg(feature = "pico2-st7789")]
@@ -38,6 +43,7 @@ pub use esp_hal::main as entry;
 
 #[cfg(not(any(
     feature = "pico-st7789",
+    feature = "waveshare-rp2040-touch-lcd-1-69",
     feature = "pico2-st7789",
     feature = "stm32h735g",
     feature = "stm32u5g9j-dk2",
@@ -47,6 +53,7 @@ pub use i_slint_core_macros::identity as entry;
 
 #[cfg(not(any(
     feature = "pico-st7789",
+    feature = "waveshare-rp2040-touch-lcd-1-69",
     feature = "pico2-st7789",
     feature = "stm32h735g",
     feature = "stm32u5g9j-dk2",
