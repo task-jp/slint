@@ -543,12 +543,20 @@ impl From<Type> for PropertyDeclaration {
     }
 }
 
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TransitionDirection {
+    Input,
+    Output,
+    InOut,
+}
+
 #[derive(Debug, Clone)]
 pub struct TransitionPropertyAnimation {
     /// The state id as computed in lower_state
     pub state_id: i32,
-    /// false for 'to', true for 'out'
-    pub is_out: bool,
+    /// The direction of the transition
+    pub direction: TransitionDirection,
     /// The content of the `animation` object
     pub animation: ElementRc,
 }
@@ -557,13 +565,42 @@ impl TransitionPropertyAnimation {
     /// Return an expression which returns a boolean which is true if the transition is active.
     /// The state argument is an expression referencing the state property of type StateInfo
     pub fn condition(&self, state: Expression) -> Expression {
-        Expression::BinaryExpression {
-            lhs: Box::new(Expression::StructFieldAccess {
-                base: Box::new(state),
-                name: (if self.is_out { "previous-state" } else { "current-state" }).into(),
-            }),
-            rhs: Box::new(Expression::NumberLiteral(self.state_id as _, Unit::None)),
-            op: '=',
+        match self.direction {
+            TransitionDirection::Input => Expression::BinaryExpression {
+                lhs: Box::new(Expression::StructFieldAccess {
+                    base: Box::new(state),
+                    name: "current-state".into(),
+                }),
+                rhs: Box::new(Expression::NumberLiteral(self.state_id as _, Unit::None)),
+                op: '=',
+            },
+            TransitionDirection::Output => Expression::BinaryExpression {
+                lhs: Box::new(Expression::StructFieldAccess {
+                    base: Box::new(state),
+                    name: "previous-state".into(),
+                }),
+                rhs: Box::new(Expression::NumberLiteral(self.state_id as _, Unit::None)),
+                op: '=',
+            },
+            TransitionDirection::InOut => Expression::BinaryExpression {
+                lhs: Box::new(Expression::BinaryExpression {
+                    lhs: Box::new(Expression::StructFieldAccess {
+                        base: Box::new(state.clone()),
+                        name: "current-state".into(),
+                    }),
+                    rhs: Box::new(Expression::NumberLiteral(self.state_id as _, Unit::None)),
+                    op: '=',
+                }),
+                rhs: Box::new(Expression::BinaryExpression {
+                    lhs: Box::new(Expression::StructFieldAccess {
+                        base: Box::new(state),
+                        name: "previous-state".into(),
+                    }),
+                    rhs: Box::new(Expression::NumberLiteral(self.state_id as _, Unit::None)),
+                    op: '=',
+                }),
+                op: '|',
+            },
         }
     }
 }
@@ -601,7 +638,7 @@ impl Clone for PropertyAnimation {
                         .iter()
                         .map(|t| TransitionPropertyAnimation {
                             state_id: t.state_id,
-                            is_out: t.is_out,
+                            direction: t.direction,
                             animation: deep_clone(&t.animation),
                         })
                         .collect(),
@@ -2447,8 +2484,7 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub struct Transition {
-    /// false for 'to', true for 'out'
-    pub is_out: bool,
+    pub direction: TransitionDirection,
     pub state_id: SmolStr,
     pub property_animations: Vec<(NamedReference, SourceLocation, ElementRc)>,
     pub node: syntax_nodes::Transition,
@@ -2465,7 +2501,13 @@ impl Transition {
             diag.push_error("catch-all not yet implemented".into(), &star);
         };
         Transition {
-            is_out: parser::identifier_text(&trs).unwrap_or_default() == "out",
+            direction: match parser::identifier_text(&trs).unwrap_or_default().as_str() {
+                "in" => TransitionDirection::Input,
+                "out" => TransitionDirection::Output,
+                "in-out" => TransitionDirection::InOut,
+                "in_out" => TransitionDirection::InOut,
+                _ => TransitionDirection::Input,
+            },
             state_id: trs
                 .DeclaredIdentifier()
                 .and_then(|x| parser::identifier_text(&x))

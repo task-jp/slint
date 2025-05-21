@@ -38,7 +38,10 @@ export TestCase := Rectangle {
             animate border { duration: 120ms; }
             animate color, text.text { duration: 300ms; }
 ///                        ^error{'text.text' is not a property that can be animated}
-
+        }
+        
+        in-out checked: {
+            animate color { duration: 100ms; }
         }
     ]
 
