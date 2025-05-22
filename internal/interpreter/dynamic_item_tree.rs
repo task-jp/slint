@@ -1420,10 +1420,16 @@ pub fn animation_for_property(
                     let state = eval::eval_expression(&state_ref, &mut context);
                     let state_info: i_slint_core::properties::StateInfo = state.try_into().unwrap();
                     for a in &animations {
-                        if (a.direction == i_slint_compiler::object_tree::TransitionDirection::Input && a.state_id == state_info.previous_state)
-                            || (a.direction == i_slint_compiler::object_tree::TransitionDirection::Output && a.state_id == state_info.current_state)
-                            || (a.direction == i_slint_compiler::object_tree::TransitionDirection::InOut && 
-                                (a.state_id == state_info.current_state || a.state_id == state_info.previous_state))
+                        if (a.direction
+                            == i_slint_compiler::object_tree::TransitionDirection::Input
+                            && a.state_id == state_info.previous_state)
+                            || (a.direction
+                                == i_slint_compiler::object_tree::TransitionDirection::Output
+                                && a.state_id == state_info.current_state)
+                            || (a.direction
+                                == i_slint_compiler::object_tree::TransitionDirection::InOut
+                                && (a.state_id == state_info.current_state
+                                    || a.state_id == state_info.previous_state))
                         {
                             return (
                                 eval::new_struct_with_bindings(

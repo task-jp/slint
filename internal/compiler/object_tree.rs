@@ -543,7 +543,6 @@ impl From<Type> for PropertyDeclaration {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TransitionDirection {
     Input,
