@@ -29,6 +29,83 @@ use crate::wasm_prelude::*;
 /// ignore a node for code analysis purposes.
 pub const NODE_IGNORE_COMMENT: &str = "@lsp:ignore-node";
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum PreviewTarget {
+    #[allow(dead_code)]
+    ChildProcess,
+    #[allow(dead_code)]
+    EmbeddedWasm,
+    #[allow(dead_code)]
+    Dummy,
+}
+
+#[allow(dead_code)]
+pub trait LspToPreview {
+    fn send(&self, message: &LspToPreviewMessage) -> Result<()>;
+    fn set_preview_target(&self, target: PreviewTarget) -> Result<()>;
+    fn preview_target(&self) -> PreviewTarget;
+}
+
+#[derive(Default, Clone)]
+pub struct DummyLspToPreview {}
+
+impl LspToPreview for DummyLspToPreview {
+    fn send(&self, _message: &LspToPreviewMessage) -> Result<()> {
+        Ok(())
+    }
+
+    fn preview_target(&self) -> PreviewTarget {
+        PreviewTarget::Dummy
+    }
+
+    fn set_preview_target(&self, _: PreviewTarget) -> Result<()> {
+        Err("Can not change the preview target".into())
+    }
+}
+
+#[allow(dead_code)]
+pub trait PreviewToLsp {
+    fn send(&self, message: &PreviewToLspMessage) -> Result<()>;
+
+    /// Tell the editor about diagnostics
+    fn notify_diagnostics(
+        &self,
+        diagnostics: HashMap<lsp_types::Url, (SourceFileVersion, Vec<lsp_types::Diagnostic>)>,
+    ) -> Result<()> {
+        for (uri, (version, diagnostics)) in diagnostics {
+            self.send(&PreviewToLspMessage::Diagnostics { uri, version, diagnostics })?;
+        }
+        Ok(())
+    }
+
+    /// Ask the editor to show some document
+    fn ask_editor_to_show_document(
+        &self,
+        file: &str,
+        selection: lsp_types::Range,
+        take_focus: bool,
+    ) -> Result<()> {
+        let file = lsp_types::Url::from_file_path(file)
+            .map_err(|_| "Failed to convert URL".to_string())?;
+        if selection.start.character == 0 || selection.end.character == 0 {
+            return Ok(());
+        }
+        self.send(&PreviewToLspMessage::ShowDocument { file, selection, take_focus })
+    }
+
+    /// Sends a telemetry event
+    fn send_telemetry(&self, data: &mut [(String, serde_json::Value)]) -> Result<()> {
+        let object = {
+            let mut object = serde_json::Map::new();
+            for (name, value) in data.iter_mut() {
+                object.insert(std::mem::take(name), std::mem::take(value));
+            }
+            object
+        };
+        self.send(&PreviewToLspMessage::TelemetryEvent(object))
+    }
+}
+
 /// Check whether a node is marked to be ignored in the LSP/live preview
 /// using a comment containing `@lsp:ignore-node`
 pub fn is_element_node_ignored(node: &syntax_nodes::Element) -> bool {
@@ -471,9 +548,6 @@ pub struct PreviewComponent {
     /// The name of the component within that file.
     /// If None, then the last component is going to be shown.
     pub component: Option<String>,
-
-    /// The style name for the preview
-    pub style: String,
 }
 
 #[allow(unused)]
@@ -532,7 +606,7 @@ pub enum PreviewToLspMessage {
     SendWorkspaceEdit { label: Option<String>, edit: lsp_types::WorkspaceEdit },
     /// Pass a `ShowMessage` notification on to the editor
     SendShowMessage { message: lsp_types::ShowMessageParams },
-    /// Senf a telemetry event
+    /// Send a telemetry event
     TelemetryEvent(serde_json::Map<String, serde_json::Value>),
 }
 
@@ -575,6 +649,26 @@ impl ComponentInformation {
                 url.to_file_path().ok().map(|p| p.to_string_lossy().to_string())
             }
         }
+    }
+}
+
+/// Poll a future once and return its result if it was `Ready` afterwards
+/// or `None` otherwise.
+#[cfg(feature = "preview-engine")]
+pub fn poll_once<F: std::future::Future>(future: F) -> Option<F::Output> {
+    struct DummyWaker();
+    impl std::task::Wake for DummyWaker {
+        fn wake(self: std::sync::Arc<Self>) {}
+    }
+
+    let waker = std::sync::Arc::new(DummyWaker()).into();
+    let mut ctx = std::task::Context::from_waker(&waker);
+
+    let future = std::pin::pin!(future);
+
+    match future.poll(&mut ctx) {
+        std::task::Poll::Ready(result) => Some(result),
+        std::task::Poll::Pending => None,
     }
 }
 
@@ -626,6 +720,45 @@ pub mod lsp_to_editor {
 
         let _ = fut.await;
     }
+}
+
+#[cfg(feature = "preview-engine")]
+pub fn fuzzy_filter_iter<T: std::fmt::Debug>(
+    input: &mut impl Iterator<Item = T>,
+    transformer: impl Fn(&T) -> String,
+    needle: &str,
+) -> Vec<T> {
+    use nucleo_matcher::{pattern, Config, Matcher};
+
+    let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
+    let pattern = pattern::Pattern::parse(
+        needle,
+        pattern::CaseMatching::Ignore,
+        pattern::Normalization::Smart,
+    );
+
+    let mut all_matches = input
+        .filter_map(|t| {
+            let terms = [transformer(&t)];
+            pattern.match_list(terms.iter(), &mut matcher).pop().map(|(_, v)| (v, t))
+        })
+        .collect::<Vec<_>>();
+
+    // sort by value, highest first. Sort names with the same value alphabetically
+    all_matches.sort_by(|r, l| l.0.cmp(&r.0));
+
+    let cut_off = {
+        let lowest_value = all_matches.last().map(|(v, _)| *v).unwrap_or_default();
+        let highest_value = all_matches.first().map(|(v, _)| *v).unwrap_or_default();
+
+        if all_matches.len() < 10 {
+            lowest_value
+        } else {
+            highest_value - (highest_value - lowest_value) / 2
+        }
+    };
+
+    all_matches.drain(..).take_while(|(v, _)| *v >= cut_off).map(|(_, t)| t).collect::<Vec<_>>()
 }
 
 #[cfg(test)]

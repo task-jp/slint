@@ -3,7 +3,10 @@
 
 // cSpell: ignore hframe qreal tabbar vframe
 
-use i_slint_core::{input::FocusEventResult, platform::PointerEventButton};
+use i_slint_core::{
+    input::{FocusEventResult, FocusReason},
+    platform::PointerEventButton,
+};
 
 use super::*;
 
@@ -234,7 +237,7 @@ impl Item for NativeTabWidget {
 
     fn input_event_filter_before_children(
         self: Pin<&Self>,
-        _: MouseEvent,
+        _: &MouseEvent,
         _window_adapter: &Rc<dyn WindowAdapter>,
         _self_rc: &ItemRc,
     ) -> InputEventFilterResult {
@@ -243,7 +246,7 @@ impl Item for NativeTabWidget {
 
     fn input_event(
         self: Pin<&Self>,
-        _: MouseEvent,
+        _: &MouseEvent,
         _window_adapter: &Rc<dyn WindowAdapter>,
         _self_rc: &i_slint_core::items::ItemRc,
     ) -> InputEventResult {
@@ -419,7 +422,7 @@ impl Item for NativeTab {
 
     fn input_event_filter_before_children(
         self: Pin<&Self>,
-        _: MouseEvent,
+        _: &MouseEvent,
         _window_adapter: &Rc<dyn WindowAdapter>,
         _self_rc: &ItemRc,
     ) -> InputEventFilterResult {
@@ -428,7 +431,7 @@ impl Item for NativeTab {
 
     fn input_event(
         self: Pin<&Self>,
-        event: MouseEvent,
+        event: &MouseEvent,
         window_adapter: &Rc<dyn WindowAdapter>,
         self_rc: &i_slint_core::items::ItemRc,
     ) -> InputEventResult {
@@ -438,7 +441,7 @@ impl Item for NativeTab {
         }
 
         Self::FIELD_OFFSETS.pressed.apply_pin(self).set(match event {
-            MouseEvent::Pressed { button, .. } => button == PointerEventButton::Left,
+            MouseEvent::Pressed { button, .. } => *button == PointerEventButton::Left,
             MouseEvent::Exit | MouseEvent::Released { .. } => false,
             MouseEvent::Moved { .. } => {
                 return if self.pressed() {
@@ -448,14 +451,21 @@ impl Item for NativeTab {
                 }
             }
             MouseEvent::Wheel { .. } => return InputEventResult::EventIgnored,
+            MouseEvent::DragMove(..) | MouseEvent::Drop(..) => {
+                return InputEventResult::EventIgnored
+            }
         });
         let click_on_press = cpp!(unsafe [] -> bool as "bool" {
             return qApp->style()->styleHint(QStyle::SH_TabBar_SelectMouseType, nullptr, nullptr) == QEvent::MouseButtonPress;
         });
-        if matches!(event, MouseEvent::Released { button, .. } if !click_on_press && button == PointerEventButton::Left)
-            || matches!(event, MouseEvent::Pressed { button, .. } if click_on_press && button == PointerEventButton::Left)
+        if matches!(event, MouseEvent::Released { button: PointerEventButton::Left, .. } if !click_on_press)
+            || matches!(event, MouseEvent::Pressed { button: PointerEventButton::Left, .. } if click_on_press)
         {
-            WindowInner::from_pub(window_adapter.window()).set_focus_item(self_rc, true);
+            WindowInner::from_pub(window_adapter.window()).set_focus_item(
+                self_rc,
+                true,
+                FocusReason::PointerClick,
+            );
             self.current.set(self.tab_index());
             InputEventResult::EventAccepted
         } else {

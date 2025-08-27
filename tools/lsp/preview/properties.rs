@@ -67,6 +67,7 @@ pub struct PropertyInformation {
     pub name: SmolStr,
     pub priority: u32,
     pub ty: Type,
+    pub visibility: PropertyVisibility,
     pub declared_at: Option<DeclarationInformation>,
     /// Range of the binding in the element source file, if it exist
     pub defined_at: Option<DefinitionInformation>,
@@ -85,6 +86,7 @@ pub struct ElementInformation {
 
 #[derive(Clone, Debug)]
 pub struct QueryPropertyResponse {
+    pub element_rc_node: common::ElementRcNode,
     pub properties: Vec<PropertyInformation>,
     pub element: Option<ElementInformation>,
     pub source_uri: String,
@@ -105,6 +107,7 @@ fn get_reserved_properties<'a>(
             name: p.0.into(),
             priority: DEFAULT_PRIORITY,
             ty: p.1,
+            visibility: PropertyVisibility::InOut,
             declared_at: None,
             defined_at: None,
             default_value: None,
@@ -144,14 +147,22 @@ fn add_element_properties(
             return None;
         }
 
-        let declared_at = value.type_node().as_ref().map(|n| DeclarationInformation {
-            path: n.source_file.path().to_path_buf(),
-            start_position: n.text_range().start(),
+        let declared_at = value.node.as_ref().map(|n| {
+            let decl = syntax_nodes::PropertyDeclaration::new(n.clone());
+
+            let ty_node: SyntaxNode =
+                decl.as_ref().and_then(|d| d.Type()).map(|t| t.into()).unwrap_or(n.clone());
+
+            DeclarationInformation {
+                path: n.source_file.path().to_path_buf(),
+                start_position: ty_node.text_range().start(),
+            }
         });
         Some(PropertyInformation {
             name: name.clone(),
             priority: DEFAULT_PRIORITY,
             ty: value.property_type.clone(),
+            visibility: value.visibility,
             declared_at,
             defined_at: None,
             default_value: None,
@@ -401,6 +412,7 @@ pub(super) fn get_properties(
                         name: k.clone(),
                         priority,
                         ty: t.ty.clone(),
+                        visibility: t.property_visibility,
                         declared_at: None,
                         defined_at: None,
                         default_value: t.default_value.expr(&current_element),
@@ -414,6 +426,7 @@ pub(super) fn get_properties(
                         name: "clip".into(),
                         priority: DEFAULT_PRIORITY,
                         ty: Type::Bool,
+                        visibility: PropertyVisibility::InOut,
                         declared_at: None,
                         defined_at: None,
                         default_value: Some(Expression::BoolLiteral(false)),
@@ -434,6 +447,7 @@ pub(super) fn get_properties(
                     name: "opacity".into(),
                     priority: DEFAULT_PRIORITY,
                     ty: Type::Float32,
+                    visibility: PropertyVisibility::InOut,
                     declared_at: None,
                     defined_at: None,
                     default_value: Some(Expression::NumberLiteral(1.0, Unit::None)),
@@ -444,6 +458,7 @@ pub(super) fn get_properties(
                     name: "visible".into(),
                     priority: DEFAULT_PRIORITY,
                     ty: Type::Bool,
+                    visibility: PropertyVisibility::InOut,
                     declared_at: None,
                     defined_at: None,
                     default_value: Some(Expression::BoolLiteral(true)),
@@ -451,12 +466,24 @@ pub(super) fn get_properties(
                     group_priority: depth,
                 });
 
-                if b.name == "Image" {
+                if b.name == "Image" || b.name == "Text" {
                     result.extend(get_reserved_properties(
                         &b.name,
                         depth,
                         i_slint_compiler::typeregister::RESERVED_ROTATION_PROPERTIES
                             .iter()
+                            .cloned(),
+                    ));
+                }
+
+                if matches!(b.name.as_str(), "GridLayout" | "HorizontalLayout" | "VerticalLayout") {
+                    // Add the padding that is otherwise filtered out
+                    result.extend(get_reserved_properties(
+                        &b.name,
+                        depth,
+                        i_slint_compiler::typeregister::RESERVED_LAYOUT_PROPERTIES
+                            .iter()
+                            .filter(|x| x.0.starts_with("padding"))
                             .cloned(),
                     ));
                 }
@@ -491,14 +518,17 @@ pub(super) fn get_properties(
                 p
             }),
         );
+
         result.extend(
             get_reserved_properties(
                 "layout",
                 depth + 2000,
-                i_slint_compiler::typeregister::RESERVED_LAYOUT_PROPERTIES.iter().cloned(),
+                i_slint_compiler::typeregister::RESERVED_LAYOUT_PROPERTIES
+                    .iter()
+                    // padding for non-layout items is not yet implemented
+                    .filter(|x| !x.0.starts_with("padding"))
+                    .cloned(),
             )
-            // padding arbitrary items is not yet implemented
-            .filter(|x| !x.name.starts_with("padding"))
             .map(|mut p| {
                 match p.name.as_str() {
                     "min-width" => p.priority = 200,
@@ -527,6 +557,7 @@ pub(super) fn get_properties(
             ty: Type::Enumeration(
                 i_slint_compiler::typeregister::BUILTIN.with(|e| e.enums.AccessibleRole.clone()),
             ),
+            visibility: PropertyVisibility::InOut,
             declared_at: None,
             defined_at: None,
             default_value: None,
@@ -575,6 +606,7 @@ pub(crate) fn query_properties(
     in_layout: LayoutKind,
 ) -> Result<QueryPropertyResponse> {
     Ok(QueryPropertyResponse {
+        element_rc_node: element.clone(),
         properties: get_properties(element, in_layout),
         element: Some(get_element_information(element)),
         source_uri: uri.to_string(),
@@ -1474,6 +1506,83 @@ component MainWindow inherits Window {
         assert_eq!(start_position.character, 20); // This should probably point to the start of
                                                   // `property<int> foo = 42`, not to the `<`
         assert_eq!(foo_property.group, "Base1");
+    }
+
+    #[test]
+    fn layout_padding() {
+        let (dc, url, _) = loaded_document_cache(
+            r#"import { LineEdit, Button, Slider, HorizontalBox, VerticalBox } from "std-widgets.slint";
+
+component CustomL inherits HorizontalLayout {
+    padding-left: 10px;
+    @children
+}
+
+component MainWindow inherits Window {
+    rect1 := Rectangle {
+        lay1 := CustomL {
+            Button { text: "Button"; }
+            err := Error {}
+            Rectangle {}
+            lay2 := VerticalLayout {
+                Slider { value: 0.5; }
+                Button { text: "Button"; }
+            }
+            lay3 := VerticalBox {
+                slider2 := Slider { value: 0.5; }
+                Rectangle {}
+            }
+        }
+    }
+}
+            "#.to_string());
+
+        let doc = dc.get_document(&url).unwrap();
+        let source = &doc.node.as_ref().unwrap().source_file;
+        let (l, c) = source.line_column(source.source().unwrap().find("lay1 :=").unwrap());
+        let (_, result) = properties_at_position_in_cache(l as u32, c as u32, &dc, &url).unwrap();
+        let property = find_property(&result, "padding").unwrap();
+        assert_eq!(property.ty, Type::LogicalLength);
+        let property = find_property(&result, "padding-left").unwrap();
+        assert_eq!(property.ty, Type::LogicalLength);
+        let property = find_property(&result, "padding-top").unwrap();
+        assert_eq!(property.ty, Type::LogicalLength);
+
+        let (l, c) = source.line_column(source.source().unwrap().find("lay2 :=").unwrap());
+        let (_, result) = properties_at_position_in_cache(l as u32, c as u32, &dc, &url).unwrap();
+        let property = find_property(&result, "padding").unwrap();
+        assert_eq!(property.ty, Type::LogicalLength);
+        let property = find_property(&result, "padding-left").unwrap();
+        assert_eq!(property.ty, Type::LogicalLength);
+        let property = find_property(&result, "padding-top").unwrap();
+        assert_eq!(property.ty, Type::LogicalLength);
+
+        let (l, c) = source.line_column(source.source().unwrap().find("lay3 :=").unwrap());
+        let (_, result) = properties_at_position_in_cache(l as u32, c as u32, &dc, &url).unwrap();
+        let property = find_property(&result, "padding").unwrap();
+        assert_eq!(property.ty, Type::LogicalLength);
+        let property = find_property(&result, "padding-left").unwrap();
+        assert_eq!(property.ty, Type::LogicalLength);
+        let property = find_property(&result, "padding-top").unwrap();
+        assert_eq!(property.ty, Type::LogicalLength);
+
+        let (l, c) = source.line_column(source.source().unwrap().find("rect1 :=").unwrap());
+        let (_, result) = properties_at_position_in_cache(l as u32, c as u32, &dc, &url).unwrap();
+        assert!(find_property(&result, "padding").is_none());
+        assert!(find_property(&result, "padding-left").is_none());
+        assert!(find_property(&result, "padding-top").is_none());
+
+        let (l, c) = source.line_column(source.source().unwrap().find("slider2 :=").unwrap());
+        let (_, result) = properties_at_position_in_cache(l as u32, c as u32, &dc, &url).unwrap();
+        assert!(find_property(&result, "padding").is_none());
+        assert!(find_property(&result, "padding-left").is_none());
+        assert!(find_property(&result, "padding-top").is_none());
+
+        let (l, c) = source.line_column(source.source().unwrap().find("err :=").unwrap());
+        let (_, result) = properties_at_position_in_cache(l as u32, c as u32, &dc, &url).unwrap();
+        assert!(dbg!(find_property(&result, "padding")).is_none());
+        assert!(find_property(&result, "padding-left").is_none());
+        assert!(find_property(&result, "padding-top").is_none());
     }
 
     #[test]

@@ -1353,8 +1353,6 @@ impl QtItemRenderer<'_> {
         size: LogicalSize,
         image: Pin<&dyn i_slint_core::item_rendering::RenderImage>,
     ) {
-        let dest_rect: qttypes::QRectF = check_geometry!(size);
-
         let source_rect = image.source_clip();
 
         let pixmap: qttypes::QPixmap = self.cache.get_or_update_cache_entry(item_rc, || {
@@ -1399,8 +1397,12 @@ impl QtItemRenderer<'_> {
                 |mut pixmap: qttypes::QPixmap| {
                     let colorize = image.colorize();
                     if !colorize.is_transparent() {
-                        let brush: qttypes::QBrush =
-                            into_qbrush(colorize, dest_rect.width, dest_rect.height);
+                        let pixmap_size = pixmap.size();
+                        let brush: qttypes::QBrush = into_qbrush(
+                            colorize,
+                            pixmap_size.width.into(),
+                            pixmap_size.height.into(),
+                        );
                         cpp!(unsafe [mut pixmap as "QPixmap", brush as "QBrush"] {
                             QPainter p(&pixmap);
                             p.setCompositionMode(QPainter::CompositionMode_SourceIn);
@@ -2282,7 +2284,7 @@ impl i_slint_core::renderer::RendererSealed for QtWindow {
                 return string.toUtf8().size();
             QTextLine textLine = layout.lineAt(line);
             int cur;
-            if (pos.x() > textLine.naturalTextWidth()) {
+            if (pos.x() >= textLine.naturalTextWidth()) {
                 cur = textLine.textStart() + textLine.textLength();
                 // cur is one past the last character of the line (eg, the \n or space).
                 // Go one back to get back on this line.
@@ -2377,16 +2379,6 @@ impl i_slint_core::renderer::RendererSealed for QtWindow {
             }
         } }
         Ok(())
-    }
-
-    fn default_font_size(&self) -> LogicalLength {
-        let default_font_size = cpp!(unsafe[] -> i32 as "int" {
-            return QFontInfo(qApp->font()).pixelSize();
-        });
-        // Ideally this would return the value from another property with a binding that's updated
-        // as a FontChange event is received. This is relevant for the case of using the Qt backend
-        // with a non-native style.
-        LogicalLength::new(default_font_size as f32)
     }
 
     fn free_graphics_resources(
@@ -2674,7 +2666,7 @@ pub(crate) mod ffi {
 
     use super::QtWindow;
 
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn slint_qt_get_widget(
         window_adapter: &i_slint_core::window::WindowAdapterRc,
     ) -> *mut c_void {

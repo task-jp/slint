@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0
 
 use super::{
-    EventResult, Item, ItemConsts, ItemRc, ItemRendererRef, KeyEventArg, MouseCursor, PointerEvent,
-    PointerEventArg, PointerEventButton, PointerEventKind, PointerScrollEvent,
-    PointerScrollEventArg, RenderingResult, VoidArg,
+    EventResult, FocusReasonArg, Item, ItemConsts, ItemRc, ItemRendererRef, KeyEventArg,
+    MouseCursor, PointerEvent, PointerEventArg, PointerEventButton, PointerEventKind,
+    PointerScrollEvent, PointerScrollEventArg, RenderingResult, VoidArg,
 };
 use crate::api::LogicalPosition;
 use crate::input::{
-    FocusEvent, FocusEventResult, InputEventFilterResult, InputEventResult, KeyEvent,
+    FocusEvent, FocusEventResult, FocusReason, InputEventFilterResult, InputEventResult, KeyEvent,
     KeyEventResult, KeyEventType, MouseEvent,
 };
 use crate::item_rendering::CachedRenderingData;
+use crate::items::FocusPolicy;
 use crate::layout::{LayoutInfo, Orientation};
 use crate::lengths::{LogicalLength, LogicalPoint, LogicalRect, LogicalSize, PointLengths};
 #[cfg(feature = "rtti")]
@@ -67,7 +68,7 @@ impl Item for TouchArea {
 
     fn input_event_filter_before_children(
         self: Pin<&Self>,
-        event: MouseEvent,
+        event: &MouseEvent,
         window_adapter: &Rc<dyn WindowAdapter>,
         _self_rc: &ItemRc,
     ) -> InputEventFilterResult {
@@ -81,6 +82,10 @@ impl Item for TouchArea {
                     modifiers: window_adapter.window().0.modifiers.get().into(),
                 },));
             }
+            return InputEventFilterResult::ForwardAndIgnore;
+        }
+        if matches!(event, MouseEvent::DragMove(..) | MouseEvent::Drop(..)) {
+            // Someone else has the grab, don't handle hover
             return InputEventFilterResult::ForwardAndIgnore;
         }
         if let Some(pos) = event.position() {
@@ -99,7 +104,7 @@ impl Item for TouchArea {
 
     fn input_event(
         self: Pin<&Self>,
-        event: MouseEvent,
+        event: &MouseEvent,
         window_adapter: &Rc<dyn WindowAdapter>,
         self_rc: &ItemRc,
     ) -> InputEventResult {
@@ -116,13 +121,13 @@ impl Item for TouchArea {
         match event {
             MouseEvent::Pressed { position, button, .. } => {
                 self.grabbed.set(true);
-                if button == PointerEventButton::Left {
+                if *button == PointerEventButton::Left {
                     Self::FIELD_OFFSETS.pressed_x.apply_pin(self).set(position.x_length());
                     Self::FIELD_OFFSETS.pressed_y.apply_pin(self).set(position.y_length());
                     Self::FIELD_OFFSETS.pressed.apply_pin(self).set(true);
                 }
                 Self::FIELD_OFFSETS.pointer_event.apply_pin(self).call(&(PointerEvent {
-                    button,
+                    button: *button,
                     kind: PointerEventKind::Down,
                     modifiers: window_adapter.window().0.modifiers.get().into(),
                 },));
@@ -144,8 +149,8 @@ impl Item for TouchArea {
 
             MouseEvent::Released { button, position, click_count } => {
                 let geometry = self_rc.geometry();
-                if button == PointerEventButton::Left
-                    && LogicalRect::new(LogicalPoint::default(), geometry.size).contains(position)
+                if *button == PointerEventButton::Left
+                    && LogicalRect::new(LogicalPoint::default(), geometry.size).contains(*position)
                     && self.pressed()
                 {
                     Self::FIELD_OFFSETS.clicked.apply_pin(self).call(&());
@@ -155,11 +160,11 @@ impl Item for TouchArea {
                 }
 
                 self.grabbed.set(false);
-                if button == PointerEventButton::Left {
+                if *button == PointerEventButton::Left {
                     Self::FIELD_OFFSETS.pressed.apply_pin(self).set(false);
                 }
                 Self::FIELD_OFFSETS.pointer_event.apply_pin(self).call(&(PointerEvent {
-                    button,
+                    button: *button,
                     kind: PointerEventKind::Up,
                     modifiers: window_adapter.window().0.modifiers.get().into(),
                 },));
@@ -181,10 +186,12 @@ impl Item for TouchArea {
             }
             MouseEvent::Wheel { delta_x, delta_y, .. } => {
                 let modifiers = window_adapter.window().0.modifiers.get().into();
-                let r = Self::FIELD_OFFSETS
-                    .scroll_event
-                    .apply_pin(self)
-                    .call(&(PointerScrollEvent { delta_x, delta_y, modifiers },));
+                let r =
+                    Self::FIELD_OFFSETS.scroll_event.apply_pin(self).call(&(PointerScrollEvent {
+                        delta_x: *delta_x,
+                        delta_y: *delta_y,
+                        modifiers,
+                    },));
                 if self.grabbed.get() {
                     InputEventResult::GrabMouse
                 } else {
@@ -200,6 +207,7 @@ impl Item for TouchArea {
                     }
                 }
             }
+            MouseEvent::DragMove(..) | MouseEvent::Drop(..) => InputEventResult::EventIgnored,
         }
     }
 
@@ -259,9 +267,12 @@ impl ItemConsts for TouchArea {
 pub struct FocusScope {
     pub enabled: Property<bool>,
     pub has_focus: Property<bool>,
+    pub focus_policy: Property<FocusPolicy>,
     pub key_pressed: Callback<KeyEventArg, EventResult>,
     pub key_released: Callback<KeyEventArg, EventResult>,
-    pub focus_changed_event: Callback<VoidArg>,
+    pub focus_changed_event: Callback<FocusReasonArg>,
+    pub focus_gained: Callback<FocusReasonArg>,
+    pub focus_lost: Callback<FocusReasonArg>,
     /// FIXME: remove this
     pub cached_rendering_data: CachedRenderingData,
 }
@@ -280,7 +291,7 @@ impl Item for FocusScope {
 
     fn input_event_filter_before_children(
         self: Pin<&Self>,
-        _: MouseEvent,
+        _: &MouseEvent,
         _window_adapter: &Rc<dyn WindowAdapter>,
         _self_rc: &ItemRc,
     ) -> InputEventFilterResult {
@@ -289,12 +300,20 @@ impl Item for FocusScope {
 
     fn input_event(
         self: Pin<&Self>,
-        event: MouseEvent,
+        event: &MouseEvent,
         window_adapter: &Rc<dyn WindowAdapter>,
         self_rc: &ItemRc,
     ) -> InputEventResult {
-        if self.enabled() && matches!(event, MouseEvent::Pressed { .. }) && !self.has_focus() {
-            WindowInner::from_pub(window_adapter.window()).set_focus_item(self_rc, true);
+        if self.enabled()
+            && self.focus_policy() != FocusPolicy::TabOnly
+            && matches!(event, MouseEvent::Pressed { .. })
+            && !self.has_focus()
+        {
+            WindowInner::from_pub(window_adapter.window()).set_focus_item(
+                self_rc,
+                true,
+                FocusReason::PointerClick,
+            );
             InputEventResult::EventAccepted
         } else {
             InputEventResult::EventIgnored
@@ -334,14 +353,30 @@ impl Item for FocusScope {
             return FocusEventResult::FocusIgnored;
         }
 
-        match event {
-            FocusEvent::FocusIn | FocusEvent::WindowReceivedFocus => {
-                self.has_focus.set(true);
-                Self::FIELD_OFFSETS.focus_changed_event.apply_pin(self).call(&());
+        let reason = match event {
+            FocusEvent::FocusIn(reason) | FocusEvent::FocusOut(reason) => *reason,
+        };
+
+        match (reason, self.focus_policy()) {
+            (FocusReason::TabNavigation, FocusPolicy::ClickOnly) => {
+                return FocusEventResult::FocusIgnored
             }
-            FocusEvent::FocusOut | FocusEvent::WindowLostFocus => {
+            (FocusReason::PointerClick, FocusPolicy::TabOnly) => {
+                return FocusEventResult::FocusIgnored
+            }
+            _ => (),
+        }
+
+        match event {
+            FocusEvent::FocusIn(_) => {
+                self.has_focus.set(true);
+                Self::FIELD_OFFSETS.focus_changed_event.apply_pin(self).call(&((reason,)));
+                Self::FIELD_OFFSETS.focus_gained.apply_pin(self).call(&((reason,)));
+            }
+            FocusEvent::FocusOut(_) => {
                 self.has_focus.set(false);
-                Self::FIELD_OFFSETS.focus_changed_event.apply_pin(self).call(&());
+                Self::FIELD_OFFSETS.focus_changed_event.apply_pin(self).call(&((reason,)));
+                Self::FIELD_OFFSETS.focus_lost.apply_pin(self).call(&((reason,)));
             }
         }
         FocusEventResult::FocusAccepted
@@ -417,7 +452,7 @@ impl Item for SwipeGestureHandler {
 
     fn input_event_filter_before_children(
         self: Pin<&Self>,
-        event: MouseEvent,
+        event: &MouseEvent,
         _window_adapter: &Rc<dyn WindowAdapter>,
         _self_rc: &ItemRc,
     ) -> InputEventFilterResult {
@@ -433,7 +468,7 @@ impl Item for SwipeGestureHandler {
                 Self::FIELD_OFFSETS
                     .pressed_position
                     .apply_pin(self)
-                    .set(crate::lengths::logical_position_to_api(position));
+                    .set(crate::lengths::logical_position_to_api(*position));
                 self.pressed.set(true);
                 InputEventFilterResult::DelayForwarding(
                     super::flickable::FORWARD_DELAY.as_millis() as _
@@ -477,12 +512,15 @@ impl Item for SwipeGestureHandler {
             MouseEvent::Pressed { .. } | MouseEvent::Released { .. } => {
                 InputEventFilterResult::ForwardAndIgnore
             }
+            MouseEvent::DragMove(..) | MouseEvent::Drop(..) => {
+                InputEventFilterResult::ForwardAndIgnore
+            }
         }
     }
 
     fn input_event(
         self: Pin<&Self>,
-        event: MouseEvent,
+        event: &MouseEvent,
         _window_adapter: &Rc<dyn WindowAdapter>,
         _self_rc: &ItemRc,
     ) -> InputEventResult {
@@ -496,7 +534,7 @@ impl Item for SwipeGestureHandler {
                 if !self.pressed.get() && !self.swiping() {
                     return InputEventResult::EventIgnored;
                 }
-                self.current_position.set(crate::lengths::logical_position_to_api(position));
+                self.current_position.set(crate::lengths::logical_position_to_api(*position));
                 self.pressed.set(false);
                 if self.swiping() {
                     Self::FIELD_OFFSETS.swiping.apply_pin(self).set(false);
@@ -510,7 +548,7 @@ impl Item for SwipeGestureHandler {
                 if !self.pressed.get() {
                     return InputEventResult::EventIgnored;
                 }
-                self.current_position.set(crate::lengths::logical_position_to_api(position));
+                self.current_position.set(crate::lengths::logical_position_to_api(*position));
                 if !self.swiping() {
                     let pressed_pos = self.pressed_position();
                     let dx = position.x - pressed_pos.x as Coord;
@@ -529,6 +567,7 @@ impl Item for SwipeGestureHandler {
                 InputEventResult::GrabMouse
             }
             MouseEvent::Wheel { .. } => InputEventResult::EventIgnored,
+            MouseEvent::DragMove(..) | MouseEvent::Drop(..) => InputEventResult::EventIgnored,
         }
     }
 
@@ -597,7 +636,7 @@ impl SwipeGestureHandler {
 }
 
 #[cfg(feature = "ffi")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn slint_swipegesturehandler_cancel(
     s: Pin<&SwipeGestureHandler>,
     window_adapter: *const crate::window::ffi::WindowAdapterRcOpaque,

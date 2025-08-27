@@ -40,6 +40,7 @@ std = [
   "chrono/wasmbind",
   "chrono/clock",
   "dep:sys-locale",
+  "dataurl",
 ]
 # Unsafe feature meaning that there is only one core running and all thread_local are static.
 # You can only enable this feature if you are sure that any API of this crate is only called
@@ -63,7 +64,7 @@ raw-window-handle-06 = ["dep:raw-window-handle-06"]
 
 experimental = []
 
-unstable-wgpu-24 = ["dep:wgpu-24"]
+unstable-wgpu-25 = ["dep:wgpu-25"]
 
 default = ["std", "unicode"]
 
@@ -77,7 +78,7 @@ vtable = { workspace = true }
 portable-atomic = { version = "1", features = ["critical-section"] }
 auto_enums = "0.8.0"
 cfg-if = "1"
-derive_more = { workspace = true }
+derive_more = { workspace = true, features = ["error"] }
 euclid = { workspace = true }
 lyon_algorithms = { version = "1.0", optional = true }
 lyon_geom = { version = "1.0", optional = true }
@@ -116,7 +117,7 @@ chrono = { version = "0.4", default-features = false, features = ["alloc"] }
 rustybuzz = { workspace = true, optional = true }
 fontdue = { workspace = true, optional = true }
 
-wgpu-24 = { workspace = true, optional = true }
+wgpu-25 = { workspace = true, optional = true }
 
 rustversion = { version = "1.0", optional = true }
 
@@ -130,6 +131,10 @@ web-sys = { workspace = true, features = ["HtmlImageElement", "Navigator"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 fontdb = { workspace = true, optional = true, default-features = true }
+
+[dependencies.dataurl]
+version = "0.1.2"
+optional = true
 
 [dev-dependencies]
 slint = { path = "../../api/rs/slint", default-features = false, features = ["std", "compat-1-2"] }
@@ -150,3 +155,6 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(slint_debug_property)", "c
 # Coord is an alias for f32 in most architectures, but not always, so the cast
 # to f32 *is* necessary.
 unnecessary_cast = { level = "allow" }
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--generate-link-to-definition"]

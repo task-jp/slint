@@ -111,6 +111,7 @@ pub async fn run_passes(
     });
     lower_tabwidget::lower_tabwidget(doc, type_loader, diag).await;
     lower_menus::lower_menus(doc, type_loader, diag).await;
+    lower_component_container::lower_component_container(doc, type_loader, diag);
     collect_subcomponents::collect_subcomponents(doc);
 
     doc.visit_all_used_components(|component| {
@@ -122,7 +123,6 @@ pub async fn run_passes(
         );
         lower_states::lower_states(component, &doc.local_registry, diag);
         lower_text_input_interface::lower_text_input_interface(component);
-        lower_platform::lower_platform(component, type_loader);
         repeater_component::process_repeater_components(component);
         lower_popups::lower_popups(component, &doc.local_registry, diag);
         collect_init_code::collect_init_code(component);
@@ -143,7 +143,6 @@ pub async fn run_passes(
     doc.visit_all_used_components(|component| {
         border_radius::handle_border_radius(component, diag);
         flickable::handle_flickable(component, &global_type_registry.borrow());
-        lower_component_container::lower_component_container(component, &doc.local_registry, diag);
         lower_layout::lower_layouts(component, type_loader, &style_metrics, diag);
         default_geometry::default_geometry(component, diag);
         lower_absolute_coordinates::lower_absolute_coordinates(component);
@@ -208,10 +207,12 @@ pub async fn run_passes(
         doc.used_types.borrow_mut().sub_components.clear();
     }
 
-    binding_analysis::binding_analysis(doc, diag);
+    binding_analysis::binding_analysis(doc, &type_loader.compiler_config, diag);
     unique_id::assign_unique_id(doc);
 
     doc.visit_all_used_components(|component| {
+        lower_platform::lower_platform(component, type_loader);
+
         // Don't perform the empty rectangle removal when debug info is requested, because the resulting
         // item tree ends up with a hierarchy where certain items have children that aren't child elements
         // but siblings or sibling children. We need a new data structure to perform a correct element tree
@@ -237,6 +238,8 @@ pub async fn run_passes(
     });
 
     remove_unused_properties::remove_unused_properties(doc);
+    // collect globals once more: After optimizations we might have less globals
+    collect_globals::collect_globals(doc, diag);
     collect_structs_and_enums::collect_structs_and_enums(doc);
 
     doc.visit_all_used_components(|component| {
@@ -244,9 +247,6 @@ pub async fn run_passes(
             generate_item_indices::generate_item_indices(component);
         }
     });
-
-    // collect globals once more: After optimizations we might have less globals
-    collect_globals::collect_globals(doc, diag);
 
     embed_images::embed_images(
         doc,

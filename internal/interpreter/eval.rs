@@ -19,6 +19,7 @@ use i_slint_compiler::langtype::Type;
 use i_slint_compiler::namedreference::NamedReference;
 use i_slint_compiler::object_tree::ElementRc;
 use i_slint_core as corelib;
+use i_slint_core::input::FocusReason;
 use i_slint_core::items::ItemRc;
 use smol_str::SmolStr;
 use std::collections::HashMap;
@@ -154,11 +155,20 @@ pub fn eval_expression(expression: &Expression, local_context: &mut EvalLocalCon
             crate::dynamic_item_tree::SPECIAL_PROPERTY_INDEX,
         )
         .unwrap(),
-        Expression::RepeaterModelReference { element } => load_property_helper(&ComponentInstance::InstanceRef(local_context.component_instance),
-            &element.upgrade().unwrap().borrow().base_type.as_component().root_element,
-            crate::dynamic_item_tree::SPECIAL_PROPERTY_MODEL_DATA,
-        )
-        .unwrap(),
+        Expression::RepeaterModelReference { element } => {
+            let value = load_property_helper(&ComponentInstance::InstanceRef(local_context.component_instance),
+                    &element.upgrade().unwrap().borrow().base_type.as_component().root_element,
+                    crate::dynamic_item_tree::SPECIAL_PROPERTY_MODEL_DATA,
+                )
+                .unwrap();
+            if matches!(value, Value::Void) {
+                // Uninitialized model data (because the model returned None) should still be initialized to the default value of the type
+                default_value_for_type(&expression.ty())
+            } else {
+                value
+            }
+
+        },
         Expression::FunctionParameterReference { index, .. } => {
             local_context.function_arguments[*index].clone()
         }
@@ -203,7 +213,7 @@ pub fn eval_expression(expression: &Expression, local_context: &mut EvalLocalCon
             }
             v
         }
-        Expression::FunctionCall { function, arguments, source_location: _ } => match &function {
+        Expression::FunctionCall { function, arguments, source_location } => match &function {
             Callable::Function(nr) => {
                 let is_item_member = nr.element().borrow().native_class().is_some_and(|n| n.properties.contains_key(nr.name()));
                 if is_item_member {
@@ -217,7 +227,7 @@ pub fn eval_expression(expression: &Expression, local_context: &mut EvalLocalCon
                 let args = arguments.iter().map(|e| eval_expression(e, local_context)).collect::<Vec<_>>();
                 invoke_callback(&ComponentInstance::InstanceRef(local_context.component_instance), &nr.element(), nr.name(), &args).unwrap()
             }
-            Callable::Builtin(f) => call_builtin_function(f.clone(), arguments, local_context),
+            Callable::Builtin(f) => call_builtin_function(f.clone(), arguments, local_context, source_location),
         }
         Expression::SelfAssignment { lhs, rhs, op, .. } => {
             let rhs = eval_expression(rhs, local_context);
@@ -273,17 +283,22 @@ pub fn eval_expression(expression: &Expression, local_context: &mut EvalLocalCon
                     Ok(Default::default())
                 }
                 i_slint_compiler::expression_tree::ImageReference::AbsolutePath(path) => {
-                    let path = std::path::Path::new(path);
-                    if path.starts_with("builtin:/") {
-                        i_slint_compiler::fileaccess::load_file(path).and_then(|virtual_file| virtual_file.builtin_contents).map(|virtual_file| {
-                            let extension = path.extension().unwrap().to_str().unwrap();
-                            corelib::graphics::load_image_from_embedded_data(
-                                corelib::slice::Slice::from_slice(virtual_file),
-                                corelib::slice::Slice::from_slice(extension.as_bytes())
-                            )
-                        }).ok_or_else(Default::default)
+                    if path.starts_with("data:") {
+                        // For interpreter, continue handling data URLs at runtime
+                        corelib::graphics::Image::load_from_data_url(path)
                     } else {
-                        corelib::graphics::Image::load_from_path(path)
+                        let path = std::path::Path::new(path);
+                        if path.starts_with("builtin:/") {
+                            i_slint_compiler::fileaccess::load_file(path).and_then(|virtual_file| virtual_file.builtin_contents).map(|virtual_file| {
+                                let extension = path.extension().unwrap().to_str().unwrap();
+                                corelib::graphics::load_image_from_embedded_data(
+                                    corelib::slice::Slice::from_slice(virtual_file),
+                                    corelib::slice::Slice::from_slice(extension.as_bytes())
+                                )
+                            }).ok_or_else(Default::default)
+                        } else {
+                            corelib::graphics::Image::load_from_path(path)
+                        }
                     }
                 }
                 i_slint_compiler::expression_tree::ImageReference::EmbeddedData { .. } => {
@@ -405,6 +420,7 @@ fn call_builtin_function(
     f: BuiltinFunction,
     arguments: &[Expression],
     local_context: &mut EvalLocalContext,
+    source_location: &Option<i_slint_compiler::diagnostics::SourceLocation>,
 ) -> Value {
     match f {
         BuiltinFunction::GetWindowScaleFactor => Value::Number(
@@ -421,7 +437,10 @@ fn call_builtin_function(
         BuiltinFunction::Debug => {
             let to_print: SharedString =
                 eval_expression(&arguments[0], local_context).try_into().unwrap();
-            corelib::debug_log!("{}", to_print);
+            local_context.component_instance.description.debug_handler.borrow()(
+                source_location.as_ref(),
+                &to_print,
+            );
             Value::Void
         }
         BuiltinFunction::Mod => {
@@ -532,6 +551,7 @@ fn call_builtin_function(
                             item_info.item_index(),
                         ),
                         true,
+                        FocusReason::Programmatic,
                     )
                 });
                 Value::Void
@@ -564,6 +584,7 @@ fn call_builtin_function(
                             item_info.item_index(),
                         ),
                         false,
+                        FocusReason::Programmatic,
                     )
                 });
                 Value::Void
@@ -681,12 +702,14 @@ fn call_builtin_function(
             let description = enclosing_component.description;
             let item_info = &description.items[elem.borrow().id.as_str()];
             let item_comp = enclosing_component.self_weak().get().unwrap().upgrade().unwrap();
-            let item_rc = corelib::items::ItemRc::new(
-                vtable::VRc::into_dyn(item_comp),
-                item_info.item_index(),
-            );
+            let item_tree = vtable::VRc::into_dyn(item_comp);
+            let item_rc = corelib::items::ItemRc::new(item_tree.clone(), item_info.item_index());
 
-            if component.access_window(|window| window.show_native_popup_menu(&item_rc, position)) {
+            let context_menu_item = vtable::VRc::new(MenuFromItemTree::new(item_tree));
+            let context_menu_item = vtable::VRc::into_dyn(context_menu_item);
+            if component
+                .access_window(|window| window.show_native_popup_menu(context_menu_item, position))
+            {
                 return Value::Void;
             }
 
@@ -867,7 +890,7 @@ fn call_builtin_function(
                 );
                 metrics.into()
             } else {
-                panic!("internal error: argument to set-selection-offsetsAll must be an element")
+                panic!("internal error: argument to item-font-metrics must be an element")
             }
         }
         BuiltinFunction::StringIsFloat => {
@@ -1133,7 +1156,9 @@ fn call_builtin_function(
 
                 if let Some(w) = component.window_adapter().internal(i_slint_core::InternalToken) {
                     if !no_native && w.supports_native_menu_bar() {
-                        w.setup_menubar(vtable::VBox::new(menu_item_tree));
+                        let menubar = vtable::VRc::new(menu_item_tree);
+                        let menubar = vtable::VRc::into_dyn(menubar);
+                        w.setup_menubar(menubar);
                         return Value::Void;
                     }
                 }
@@ -1165,12 +1190,14 @@ fn call_builtin_function(
             };
             if let Some(w) = component.window_adapter().internal(i_slint_core::InternalToken) {
                 if w.supports_native_menu_bar() {
-                    w.setup_menubar(vtable::VBox::new(MenuWrapper {
+                    let menubar = vtable::VRc::new(MenuWrapper {
                         entries: entries.clone(),
                         sub_menu: sub_menu.clone(),
                         activated: activated.clone(),
                         item_tree: component.self_weak().get().unwrap().clone(),
-                    }));
+                    });
+                    let menubar = vtable::VRc::into_dyn(menubar);
+                    w.setup_menubar(menubar);
                 }
             }
             Value::Void
@@ -1337,6 +1364,21 @@ fn call_builtin_function(
             Value::Void
         }
         BuiltinFunction::DetectOperatingSystem => i_slint_core::detect_operating_system().into(),
+        // start and stop are unreachable because they are lowered to simple assignment of running
+        BuiltinFunction::StartTimer => unreachable!(),
+        BuiltinFunction::StopTimer => unreachable!(),
+        BuiltinFunction::RestartTimer => {
+            if let [Expression::ElementReference(timer_element)] = arguments {
+                crate::dynamic_item_tree::restart_timer(
+                    timer_element.clone(),
+                    local_context.component_instance,
+                );
+
+                Value::Void
+            } else {
+                panic!("internal error: argument to RestartTimer must be an element")
+            }
+        }
     }
 }
 

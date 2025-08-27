@@ -4,6 +4,7 @@
 // for MenuVTable_static
 #![allow(unsafe_code)]
 
+use crate::graphics::Image;
 use crate::item_rendering::CachedRenderingData;
 use crate::item_tree::{ItemTreeRc, ItemWeak, VisitChildrenResult};
 use crate::items::{ItemRc, ItemRef, MenuEntry, VoidArg};
@@ -22,15 +23,18 @@ use i_slint_core_macros::SlintElement;
 use vtable::{VRef, VRefMut};
 
 /// Interface for native menu and menubar
+#[cfg_attr(not(feature = "ffi"), i_slint_core_macros::remove_extern)]
 #[vtable::vtable]
 #[repr(C)]
 pub struct MenuVTable {
-    /// destructor
-    drop: fn(VRefMut<MenuVTable>),
     /// Return the list of items for the sub menu (or the main menu of parent is None)
-    sub_menu: fn(VRef<MenuVTable>, Option<&MenuEntry>, &mut SharedVector<MenuEntry>),
+    sub_menu: extern "C" fn(VRef<MenuVTable>, Option<&MenuEntry>, &mut SharedVector<MenuEntry>),
     /// Handler when the menu entry is activated
-    activate: fn(VRef<MenuVTable>, &MenuEntry),
+    activate: extern "C" fn(VRef<MenuVTable>, &MenuEntry),
+    /// drop_in_place handler
+    drop_in_place: extern "C" fn(VRefMut<MenuVTable>) -> Layout,
+    /// dealloc handler
+    dealloc: extern "C" fn(&MenuVTable, ptr: *mut u8, layout: Layout),
 }
 
 struct ShadowTreeNode {
@@ -86,11 +90,12 @@ impl MenuFromItemTree {
                     let children = self.update_shadow_tree_recursive(&item);
                     let has_sub_menu = !children.is_empty();
                     let enabled = menu_item.enabled();
+                    let icon = menu_item.icon();
                     self.item_cache.borrow_mut().insert(
                         id.clone(),
                         ShadowTreeNode { item: ItemRc::downgrade(&item), children },
                     );
-                    result.push(MenuEntry { title, id, has_sub_menu, is_separator, enabled });
+                    result.push(MenuEntry { title, id, has_sub_menu, is_separator, enabled, icon });
                 }
                 VisitChildrenResult::CONTINUE
             };
@@ -145,6 +150,7 @@ pub struct MenuItem {
     pub title: Property<SharedString>,
     pub activated: Callback<VoidArg>,
     pub enabled: Property<bool>,
+    pub icon: Property<Image>,
 }
 
 impl crate::items::Item for MenuItem {
@@ -161,7 +167,7 @@ impl crate::items::Item for MenuItem {
 
     fn input_event_filter_before_children(
         self: Pin<&Self>,
-        _: crate::input::MouseEvent,
+        _: &crate::input::MouseEvent,
         _window_adapter: &Rc<dyn WindowAdapter>,
         _self_rc: &ItemRc,
     ) -> crate::input::InputEventFilterResult {
@@ -170,7 +176,7 @@ impl crate::items::Item for MenuItem {
 
     fn input_event(
         self: Pin<&Self>,
-        _: crate::input::MouseEvent,
+        _: &crate::input::MouseEvent,
         _window_adapter: &Rc<dyn WindowAdapter>,
         _self_rc: &ItemRc,
     ) -> crate::input::InputEventResult {
@@ -232,12 +238,12 @@ pub mod ffi {
     /// Create a `VBox::<MenuVTable>`` that wraps the [`ItemTreeRc`]
     ///
     /// Put the created VBox into the result pointer with std::ptr::write
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn slint_menus_create_wrapper(
         menu_tree: &ItemTreeRc,
-        result: *mut vtable::VBox<MenuVTable>,
+        result: *mut vtable::VRc<MenuVTable>,
     ) {
-        let b = vtable::VBox::<MenuVTable>::new(MenuFromItemTree::new(menu_tree.clone()));
-        core::ptr::write(result, b);
+        let vrc = vtable::VRc::into_dyn(vtable::VRc::new(MenuFromItemTree::new(menu_tree.clone())));
+        core::ptr::write(result, vrc);
     }
 }

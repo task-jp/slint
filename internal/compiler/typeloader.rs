@@ -327,13 +327,8 @@ impl Snapshotter {
                     .collect(),
             );
 
-            let child_insertion_point = RefCell::new(
-                component
-                    .child_insertion_point
-                    .borrow()
-                    .as_ref()
-                    .map(|(e, s, n)| (self.use_element(e), *s, n.clone())),
-            );
+            let child_insertion_point =
+                RefCell::new(component.child_insertion_point.borrow().clone());
 
             let popup_windows = RefCell::new(
                 component
@@ -453,7 +448,7 @@ impl Snapshotter {
             .transitions
             .iter()
             .map(|t| object_tree::Transition {
-                is_out: t.is_out,
+                direction: t.direction,
                 state_id: t.state_id.clone(),
                 property_animations: t
                     .property_animations
@@ -570,7 +565,7 @@ impl Snapshotter {
                             .iter()
                             .map(|tpa| object_tree::TransitionPropertyAnimation {
                                 state_id: tpa.state_id,
-                                is_out: tpa.is_out,
+                                direction: tpa.direction,
                                 animation: self.create_and_snapshot_element(&tpa.animation),
                             })
                             .collect(),
@@ -645,11 +640,12 @@ impl Snapshotter {
         }
     }
 
-    fn snapshot_timer(&mut self, popup_window: &object_tree::Timer) -> object_tree::Timer {
+    fn snapshot_timer(&mut self, timer: &object_tree::Timer) -> object_tree::Timer {
         object_tree::Timer {
-            interval: popup_window.interval.snapshot(self),
-            running: popup_window.running.snapshot(self),
-            triggered: popup_window.triggered.snapshot(self),
+            interval: timer.interval.snapshot(self),
+            running: timer.running.snapshot(self),
+            triggered: timer.triggered.snapshot(self),
+            element: timer.element.clone(),
         }
     }
 
@@ -1046,7 +1042,7 @@ impl TypeLoader {
                                 .filter_map(|e| {
                                     let (imported_name, exported_name) = ExportedName::from_export_specifier(&e);
                                     let Some(r) = doc.exports.find(&imported_name) else {
-                                        state.diag.push_error(format!("No exported type called '{imported_name}' found in {doc_path:?}"), &e);
+                                        state.diag.push_error(format!("No exported type called '{imported_name}' found in \"{}\"", doc_path.display()), &e);
                                         return None;
                                     };
                                     Some((exported_name, r))

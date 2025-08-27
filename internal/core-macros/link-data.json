@@ -1,4 +1,7 @@
 {
+    "AccessibleProperties": {
+        "href": "reference/common/#accessibility-properties"
+    },
     "AnimationRef": {
         "href": "reference/primitive-types/#animation"
     },
@@ -49,6 +52,12 @@
     },
     "float": {
         "href": "reference/primitive-types/#float"
+    },
+    "FocusPolicy": {
+        "href": "reference/global-structs-enums/#focuspolicy"
+    },
+    "FocusReason": {
+        "href": "reference/global-structs-enums/#focusreason"
     },
     "FocusHandling": {
         "href": "guide/development/focus/"
@@ -187,6 +196,9 @@
     },
     "backends_and_renderers": {
         "href": "guide/backends-and-renderers/backends_and_renderers/"
+    },
+    "skia_renderer": {
+        "href": "guide/backends-and-renderers/backends_and_renderers/#skia-renderer"
     },
     "globals": {
         "href": "guide/language/coding/globals/"

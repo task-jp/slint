@@ -242,9 +242,8 @@ export class KnownUrlMapper implements UrlMapper {
                 monaco.Uri.parse(mapped_url) ??
                 monaco.Uri.parse("file:///broken_url")
             );
-        } else {
-            return uri;
         }
+        return uri;
     }
 }
 
@@ -325,7 +324,7 @@ class EditorPaneWidget extends Widget {
             model_ref.object.textEditorModel?.uri,
         );
         this.title.closable = false;
-        this.title.caption = `Slint Code Editor`;
+        this.title.caption = "Slint Code Editor";
     }
 
     get editor(): monaco.editor.IStandaloneCodeEditor {
@@ -378,7 +377,7 @@ export class EditorWidget extends Widget {
 
         this.title.label = "Editor";
         this.title.closable = false;
-        this.title.caption = `Slint code editor`;
+        this.title.caption = "Slint code editor";
 
         this.#layout = new BoxLayout({ spacing: 0 });
         super.layout = this.#layout;
@@ -393,14 +392,14 @@ export class EditorWidget extends Widget {
 
         this.clear_editors();
 
-        this.open_default_content();
+        void this.open_default_content();
     }
 
     switch_to_pane(pane: EditorPaneWidget) {
         this.#tab_panel!.currentWidget = pane;
     }
 
-    private async open_default_content() {
+    private open_default_content() {
         const params = new URLSearchParams(window.location.search);
         const code = params.get("snippet");
         const load_url = params.get("load_url");
@@ -414,10 +413,11 @@ export class EditorWidget extends Widget {
                     code,
                 ),
             );
-        } else if (load_url) {
-            return await this.project_from_url(load_url);
+        }
+        if (load_url) {
+            void this.project_from_url(load_url);
         } else {
-            return await this.set_demo(load_demo ?? "");
+            void this.set_demo(load_demo ?? "");
         }
     }
 
@@ -533,9 +533,7 @@ export class EditorWidget extends Widget {
 
         this.clear_editors();
 
-        return Promise.resolve(
-            (await this.open_tab_from_url(monaco.Uri.parse(uri)))[0],
-        );
+        return (await this.open_tab_from_url(monaco.Uri.parse(uri)))[0];
     }
 
     private async open_tab_from_url(
@@ -609,9 +607,8 @@ export class EditorWidget extends Widget {
             return this.project_from_url(
                 `https://raw.githubusercontent.com/slint-ui/slint/${tag}/${location}`,
             );
-        } else {
-            return Promise.resolve(this.open_hello_world());
         }
+        return Promise.resolve(this.open_hello_world());
     }
 
     public get open_document_urls(): string[] {

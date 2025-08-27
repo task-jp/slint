@@ -5,8 +5,8 @@ import { dispatchTS, listenTS } from "./bolt-utils";
 import { downloadZipFile, writeTextToClipboard } from "./utils.js";
 
 export enum ExportType {
-    SeparateFiles,
-    SingleFile,
+    SeparateFiles = 0,
+    SingleFile = 1,
 }
 
 interface StoreState {
@@ -25,6 +25,7 @@ interface StoreState {
     ) => Promise<void>;
     exportFiles: (singleOrMultiple: ExportType) => void;
     startVariableCheckInterval: () => void;
+    resizeWindow: (width: number, height: number) => void;
 }
 
 export const useInspectorStore = create<StoreState>()((set, get) => ({
@@ -112,5 +113,9 @@ export const useInspectorStore = create<StoreState>()((set, get) => ({
         setInterval(() => {
             dispatchTS("checkVariableChanges", {});
         }, 5000);
+    },
+
+    resizeWindow: (width: number, height: number) => {
+        dispatchTS("resizeWindow", { width, height });
     },
 }));

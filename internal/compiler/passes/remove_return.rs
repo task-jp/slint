@@ -78,11 +78,13 @@ fn process_expression(
                     }))
                 }
                 (te, fe) => {
+                    let has_value = has_value(ty) && (te.has_value() || fe.has_value());
+                    let ty = if has_value { ty } else { &Type::Void };
                     let te = te.into_return_object(ty, &ctx.ret_ty);
                     let fe = fe.into_return_object(ty, &ctx.ret_ty);
                     ExpressionResult::ReturnObject {
-                        has_value: has_value(ty),
-                        has_return_value: has_value(&ctx.ret_ty),
+                        has_value,
+                        has_return_value: self::has_value(&ctx.ret_ty),
                         value: Expression::Condition {
                             condition,
                             true_expr: te.into(),
@@ -149,8 +151,7 @@ fn process_codeblock(
                         actual_value,
                     };
                 } else if toplevel {
-                    let rest =
-                        process_codeblock(iter, true, &Type::Void, ctx).to_expression(&ctx.ret_ty);
+                    let rest = process_codeblock(iter, true, ty, ctx).to_expression(&ctx.ret_ty);
                     let mut rest_ex = Expression::CodeBlock(
                         actual_value.into_iter().chain(core::iter::once(rest)).collect(),
                     );
@@ -167,7 +168,7 @@ fn process_codeblock(
                 } else {
                     return continue_codeblock(
                         iter,
-                        &Type::Void,
+                        ty,
                         ctx,
                         ExpressionResult::MaybeReturn {
                             pre_statements: vec![],
@@ -455,6 +456,17 @@ impl ExpressionResult {
                     has_return_value,
                 }
             }
+        }
+    }
+
+    fn has_value(&self) -> bool {
+        match self {
+            ExpressionResult::Just(expression) => has_value(&expression.ty()),
+            ExpressionResult::MaybeReturn { actual_value, .. } => {
+                actual_value.as_ref().is_some_and(|x| has_value(&x.ty()))
+            }
+            ExpressionResult::Return(..) => false,
+            ExpressionResult::ReturnObject { has_value, .. } => *has_value,
         }
     }
 }

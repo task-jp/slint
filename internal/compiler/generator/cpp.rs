@@ -47,7 +47,7 @@ fn is_cpp_keyword(word: &str) -> bool {
     keywords.contains(word)
 }
 
-fn ident(ident: &str) -> SmolStr {
+pub fn ident(ident: &str) -> SmolStr {
     let mut new_ident = SmolStr::from(ident);
     if ident.contains('-') {
         new_ident = ident.replace_smolstr("-", "_");
@@ -58,7 +58,7 @@ fn ident(ident: &str) -> SmolStr {
     new_ident
 }
 
-fn concatenate_ident(ident: &str) -> SmolStr {
+pub fn concatenate_ident(ident: &str) -> SmolStr {
     if ident.contains('-') {
         ident.replace_smolstr("-", "_")
     } else {
@@ -109,7 +109,7 @@ fn access_item_rc(pr: &llr::PropertyReference, ctx: &EvaluationContext) -> Strin
 
 /// This module contains some data structure that helps represent a C++ code.
 /// It is then rendered into an actual C++ text using the Display trait
-mod cpp_ast {
+pub mod cpp_ast {
 
     use std::cell::Cell;
     use std::fmt::{Display, Error, Formatter};
@@ -482,6 +482,8 @@ use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 
+const SHARED_GLOBAL_CLASS: &str = "SharedGlobals";
+
 #[derive(Default)]
 struct ConditionalIncludes {
     iostream: Cell<bool>,
@@ -679,31 +681,14 @@ pub fn generate(
     config: Config,
     compiler_config: &CompilerConfiguration,
 ) -> std::io::Result<impl std::fmt::Display> {
-    let mut file = File { namespace: config.namespace.clone(), ..Default::default() };
+    if std::env::var("SLINT_LIVE_RELOAD").is_ok() {
+        return super::cpp_live_reload::generate(doc, config, compiler_config);
+    }
 
-    file.includes.push("<array>".into());
-    file.includes.push("<limits>".into());
-    file.includes.push("<slint.h>".into());
+    let mut file = generate_types(&doc.used_types.borrow().structs_and_enums, &config);
 
     for (path, er) in doc.embedded_file_resources.borrow().iter() {
         embed_resource(er, path, &mut file.resources);
-    }
-
-    for ty in doc.used_types.borrow().structs_and_enums.iter() {
-        match ty {
-            Type::Struct(s) if s.name.is_some() && s.node.is_some() => {
-                generate_struct(
-                    &mut file,
-                    s.name.as_ref().unwrap(),
-                    &s.fields,
-                    s.node.as_ref().unwrap(),
-                );
-            }
-            Type::Enumeration(en) => {
-                generate_enum(&mut file, en);
-            }
-            _ => (),
-        }
     }
 
     let llr = llr::lower_to_item_tree::lower_to_item_tree(doc, compiler_config)?;
@@ -719,6 +704,20 @@ pub fn generate(
             .iter()
             .map(|c| Declaration::Struct(Struct { name: ident(&c.name), ..Default::default() })),
     );
+
+    // forward-declare the global struct
+    file.declarations.push(Declaration::Struct(Struct {
+        name: SmolStr::new_static(SHARED_GLOBAL_CLASS),
+        ..Default::default()
+    }));
+
+    // Forward-declare sub components.
+    file.declarations.extend(llr.used_sub_components.iter().map(|sub_compo| {
+        Declaration::Struct(Struct {
+            name: ident(&llr.sub_components[*sub_compo].name),
+            ..Default::default()
+        })
+    }));
 
     let conditional_includes = ConditionalIncludes::default();
 
@@ -738,7 +737,8 @@ pub fn generate(
         file.declarations.push(Declaration::Struct(sub_compo_struct));
     }
 
-    let mut globals_struct = Struct { name: "SharedGlobals".into(), ..Default::default() };
+    let mut globals_struct =
+        Struct { name: SmolStr::new_static(SHARED_GLOBAL_CLASS), ..Default::default() };
 
     // The window need to be the first member so it is destroyed last
     globals_struct.members.push((
@@ -761,7 +761,7 @@ pub fn generate(
     ));
 
     let mut window_creation_code = vec![
-        format!("auto self = const_cast<SharedGlobals *>(this);"),
+        format!("auto self = const_cast<{SHARED_GLOBAL_CLASS} *>(this);"),
         "if (!self->m_window.has_value()) {".into(),
         "   auto &window = self->m_window.emplace(slint::private_api::WindowAdapterRc());".into(),
     ];
@@ -857,15 +857,6 @@ pub fn generate(
 
     generate_type_aliases(&mut file, doc);
 
-    file.after_includes = format!(
-        "static_assert({x} == SLINT_VERSION_MAJOR && {y} == SLINT_VERSION_MINOR && {z} == SLINT_VERSION_PATCH, \
-        \"This file was generated with Slint compiler version {x}.{y}.{z}, but the Slint library used is \" \
-        SLINT_VERSION_STRING \". The version numbers must match exactly.\");",
-        x = env!("CARGO_PKG_VERSION_MAJOR"),
-        y = env!("CARGO_PKG_VERSION_MINOR"),
-        z = env!("CARGO_PKG_VERSION_PATCH")
-    );
-
     if conditional_includes.iostream.get() {
         file.includes.push("<iostream>".into());
     }
@@ -888,6 +879,42 @@ pub fn generate(
     Ok(file)
 }
 
+pub fn generate_types(used_types: &[Type], config: &Config) -> File {
+    let mut file = File { namespace: config.namespace.clone(), ..Default::default() };
+
+    file.includes.push("<array>".into());
+    file.includes.push("<limits>".into());
+    file.includes.push("<slint.h>".into());
+
+    file.after_includes = format!(
+        "static_assert({x} == SLINT_VERSION_MAJOR && {y} == SLINT_VERSION_MINOR && {z} == SLINT_VERSION_PATCH, \
+        \"This file was generated with Slint compiler version {x}.{y}.{z}, but the Slint library used is \" \
+        SLINT_VERSION_STRING \". The version numbers must match exactly.\");",
+        x = env!("CARGO_PKG_VERSION_MAJOR"),
+        y = env!("CARGO_PKG_VERSION_MINOR"),
+        z = env!("CARGO_PKG_VERSION_PATCH")
+    );
+
+    for ty in used_types {
+        match ty {
+            Type::Struct(s) if s.name.is_some() && s.node.is_some() => {
+                generate_struct(
+                    &mut file,
+                    s.name.as_ref().unwrap(),
+                    &s.fields,
+                    s.node.as_ref().unwrap(),
+                );
+            }
+            Type::Enumeration(en) => {
+                generate_enum(&mut file, en);
+            }
+            _ => (),
+        }
+    }
+
+    file
+}
+
 fn embed_resource(
     resource: &crate::embedded_resources::EmbeddedResources,
     path: &SmolStr,
@@ -906,7 +933,7 @@ fn embed_resource(
                     init.push(',');
                 }
                 write!(&mut init, "0x{byte:x}").unwrap();
-                if index % 16 == 0 {
+                if index > 0 && index % 16 == 0 {
                     init.push('\n');
                 }
             }
@@ -1109,6 +1136,29 @@ fn embed_resource(
                 ..Default::default()
             }))
         }
+        crate::embedded_resources::EmbeddedResourcesKind::DecodedData(data, _) => {
+            let mut init = "{ ".to_string();
+
+            for (index, byte) in data.iter().enumerate() {
+                if index > 0 {
+                    init.push(',');
+                }
+                write!(&mut init, "0x{byte:x}").unwrap();
+                if index > 0 && index % 16 == 0 {
+                    init.push('\n');
+                }
+            }
+
+            init.push('}');
+
+            declarations.push(Declaration::Var(Var {
+                ty: "const uint8_t".into(),
+                name: format_smolstr!("slint_embedded_resource_{}", resource.id),
+                array_size: Some(data.len()),
+                init: Some(init),
+                ..Default::default()
+            }));
+        }
     }
 }
 
@@ -1176,7 +1226,7 @@ fn generate_public_component(
     component_struct.members.push((
         Access::Private,
         Declaration::Var(Var {
-            ty: "SharedGlobals".into(),
+            ty: SmolStr::new_static(SHARED_GLOBAL_CLASS),
             name: "m_globals".into(),
             ..Default::default()
         }),
@@ -2663,7 +2713,7 @@ fn generate_global(
             ..Default::default()
         }),
     ));
-    global_struct.friends.push(SmolStr::new_static("SharedGlobals"));
+    global_struct.friends.push(SmolStr::new_static(SHARED_GLOBAL_CLASS));
 
     generate_public_api_for_properties(
         &mut global_struct.members,
@@ -2723,6 +2773,7 @@ fn generate_public_api_for_properties(
             let param_types =
                 callback.args.iter().map(|t| t.cpp_type().unwrap()).collect::<Vec<_>>();
             let callback_emitter = vec![
+                "slint::private_api::assert_main_thread();".into(),
                 "[[maybe_unused]] auto self = this;".into(),
                 format!(
                     "return {}.call({});",
@@ -2757,6 +2808,7 @@ fn generate_public_api_for_properties(
                     )),
                     signature: "(Functor && callback_handler) const".into(),
                     statements: Some(vec![
+                        "slint::private_api::assert_main_thread();".into(),
                         "[[maybe_unused]] auto self = this;".into(),
                         format!("{}.set_handler(std::forward<Functor>(callback_handler));", access),
                     ]),
@@ -2794,6 +2846,7 @@ fn generate_public_api_for_properties(
         } else {
             let cpp_property_type = p.ty.cpp_type().expect("Invalid type in public properties");
             let prop_getter: Vec<String> = vec![
+                "slint::private_api::assert_main_thread();".into(),
                 "[[maybe_unused]] auto self = this;".into(),
                 format!("return {}.get();", access),
             ];
@@ -2809,6 +2862,7 @@ fn generate_public_api_for_properties(
 
             if !p.read_only {
                 let prop_setter: Vec<String> = vec![
+                    "slint::private_api::assert_main_thread();".into(),
                     "[[maybe_unused]] auto self = this;".into(),
                     property_set_value_code(&p.prop, "value", ctx) + ";",
                 ];
@@ -3109,7 +3163,7 @@ fn compile_expression(expr: &llr::Expression, ctx: &EvaluationContext) -> String
         }
         Expression::FunctionParameterReference { index, .. } => format!("arg_{index}"),
         Expression::StoreLocalVariable { name, value } => {
-            format!("auto {} = {};", ident(name), compile_expression(value, ctx))
+            format!("[[maybe_unused]] auto {} = {};", ident(name), compile_expression(value, ctx))
         }
         Expression::ReadLocalVariable { name, .. } => ident(name).to_string(),
         Expression::StructFieldAccess { base, name } => match base.ty(ctx) {
@@ -3311,7 +3365,13 @@ fn compile_expression(expr: &llr::Expression, ctx: &EvaluationContext) -> String
         Expression::ImageReference { resource_ref, nine_slice }  => {
             let image = match resource_ref {
                 crate::expression_tree::ImageReference::None => r#"slint::Image()"#.to_string(),
-                crate::expression_tree::ImageReference::AbsolutePath(path) => format!(r#"slint::Image::load_from_path(slint::SharedString(u8"{}"))"#, escape_string(path.as_str())),
+                crate::expression_tree::ImageReference::AbsolutePath(path) => {
+                    if path.starts_with("data:") {
+                        format!(r#"slint::Image::load_from_data_url(u8"{}")"#, escape_string(path.as_str()))
+                    } else {
+                        format!(r#"slint::Image::load_from_path(u8"{}")"#, escape_string(path.as_str()))
+                    }
+                }
                 crate::expression_tree::ImageReference::EmbeddedData { resource_id, extension } => {
                     let symbol = format!("slint_embedded_resource_{resource_id}");
                     format!(r#"slint::private_api::load_image_from_embedded_data({symbol}, "{}")"#, escape_string(extension))
@@ -3594,7 +3654,7 @@ fn compile_builtin_function_call(
             if let [llr::Expression::PropertyReference(pr)] = arguments {
                 let window = access_window_field(ctx);
                 let focus_item = access_item_rc(pr, ctx);
-                format!("{window}.set_focus_item({focus_item}, true);")
+                format!("{window}.set_focus_item({focus_item}, true, slint::cbindgen_private::FocusReason::Programmatic);")
             } else {
                 panic!("internal error: invalid args to SetFocusItem {arguments:?}")
             }
@@ -3603,7 +3663,7 @@ fn compile_builtin_function_call(
             if let [llr::Expression::PropertyReference(pr)] = arguments {
                 let window = access_window_field(ctx);
                 let focus_item = access_item_rc(pr, ctx);
-                format!("{window}.set_focus_item({focus_item}, false);")
+                format!("{window}.set_focus_item({focus_item}, false, slint::cbindgen_private::FocusReason::Programmatic);")
             } else {
                 panic!("internal error: invalid args to ClearFocusItem {arguments:?}")
             }
@@ -3706,12 +3766,10 @@ fn compile_builtin_function_call(
                         if ({window}.supports_native_menu_bar()) {{
                             auto item_tree = {item_tree_id}::create(self);
                             auto item_tree_dyn = item_tree.into_dyn();
-                            vtable::VBox<slint::cbindgen_private::MenuVTable> box{{}};
-                            slint::cbindgen_private::slint_menus_create_wrapper(&item_tree_dyn, &box);
-                            slint::cbindgen_private::slint_windowrc_setup_native_menu_bar(&{window}.handle(), const_cast<slint::cbindgen_private::MenuVTable*>(box.vtable), box.instance);
-                            // The ownership of the VBox is transferred to slint_windowrc_setup_native_menu_bar
-                            box.instance = nullptr;
-                            box.vtable = nullptr;
+                            slint::private_api::MaybeUninitialized<vtable::VRc<slint::cbindgen_private::MenuVTable>> maybe;
+                            slint::cbindgen_private::slint_menus_create_wrapper(&item_tree_dyn, &maybe.value);
+                            auto vrc = maybe.take();
+                            slint::cbindgen_private::slint_windowrc_setup_native_menu_bar(&{window}.handle(), &vrc);
                         }} else {{
                             auto item_tree = {item_tree_id}::create(self);
                             auto item_tree_dyn = item_tree.into_dyn();
@@ -3793,7 +3851,7 @@ fn compile_builtin_function_call(
                 let position = compile_expression(&popup.position.borrow(), &popup_ctx);
                 let close_policy = compile_expression(close_policy, ctx);
                 format!(
-                    "{window}.close_popup({component_access}->popup_id_{popup_index}); {component_access}->popup_id_{popup_index} = {window}.show_popup<{popup_window_id}>(&*({component_access}), [=](auto self) {{ return {position}; }}, {close_policy}, {{ {parent_component} }})"
+                    "{window}.close_popup({component_access}->popup_id_{popup_index}); {component_access}->popup_id_{popup_index} = {window}.template show_popup<{popup_window_id}>(&*({component_access}), [=](auto self) {{ return {position}; }}, {close_policy}, {{ {parent_component} }})"
                 )
             } else {
                 panic!("internal error: invalid args to ShowPopupWindow {arguments:?}")
@@ -3880,7 +3938,7 @@ fn compile_builtin_function_call(
             };
             format!(r"
                 {window}.close_popup({context_menu}.popup_id);
-                {context_menu}.popup_id = {window}.show_popup_menu<{popup_id}>({globals}, {position}, {{ {context_menu_rc} }}, [self](auto popup_menu) {{
+                {context_menu}.popup_id = {window}.template show_popup_menu<{popup_id}>({globals}, {position}, {{ {context_menu_rc} }}, [self](auto popup_menu) {{
                     auto parent_weak = self->self_weak;
                     auto self_ = self;
                     {init}
@@ -3971,9 +4029,18 @@ fn compile_builtin_function_call(
             "self->update_timers()".into()
         }
         BuiltinFunction::DetectOperatingSystem => {
-            format!("slint::private_api::detect_operating_system()")
+            format!("slint::cbindgen_private::slint_detect_operating_system()")
         }
-
+        // start and stop are unreachable because they are lowered to simple assignment of running
+        BuiltinFunction::StartTimer => unreachable!(),
+        BuiltinFunction::StopTimer => unreachable!(),
+        BuiltinFunction::RestartTimer => {
+            if let [llr::Expression::NumberLiteral(timer_index)] = arguments {
+                format!("const_cast<slint::Timer&>(self->timer{}).restart()", timer_index)
+            } else {
+                panic!("internal error: invalid args to RetartTimer {arguments:?}")
+            }
+        }
     }
 }
 
@@ -4068,7 +4135,7 @@ fn return_compile_expression(
     }
 }
 
-fn generate_type_aliases(file: &mut File, doc: &Document) {
+pub fn generate_type_aliases(file: &mut File, doc: &Document) {
     let type_aliases = doc
         .exports
         .iter()

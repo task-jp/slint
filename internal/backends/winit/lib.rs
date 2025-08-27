@@ -17,6 +17,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::rc::Weak;
+use std::sync::Arc;
+use winit::event_loop::ActiveEventLoop;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod clipboard;
@@ -24,16 +26,23 @@ mod drag_resize_window;
 mod winitwindowadapter;
 use winitwindowadapter::*;
 pub(crate) mod event_loop;
+mod frame_throttle;
 
 /// Re-export of the winit crate.
 pub use winit;
 
 /// Internal type used by the winit backend for thread communication and window system updates.
+///
+/// See also [`EventLoopBuilder`]
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct SlintEvent(CustomEvent);
 
+#[i_slint_core_macros::slint_doc]
 /// Convenience alias for the event loop builder used by Slint.
+///
+/// It can be used to configure the event loop with
+/// [`slint::BackendSelector::with_winit_event_loop_builder()`](slint:rust:slint/struct.BackendSelector.html#method.with_winit_event_loop_builder)
 pub type EventLoopBuilder = winit::event_loop::EventLoopBuilder<SlintEvent>;
 
 /// Returned by callbacks passed to [`Window::on_winit_window_event`](WinitWindowAccessor::on_winit_window_event)
@@ -164,6 +173,72 @@ pub const HAS_NATIVE_STYLE: bool = false;
 #[doc(hidden)]
 pub mod native_widgets {}
 
+/// Use this trait to intercept events from winit.
+///
+/// It imitates [`winit::application::ApplicationHandler`] with two changes:
+///   - All functions are invoked before Slint sees them. Use the [`WinitWindowEventResult`] return value to
+///     optionally prevent Slint from seeing the event.
+///   - The [`Self::window_event()`] function has additional parameters to provide access to the Slint Window and
+///     Winit window, if applicable.
+#[allow(unused_variables)]
+pub trait CustomApplicationHandler {
+    /// Re-implement to intercept the [`ApplicationHandler::resumed()`](winit::application::ApplicationHandler::resumed()) event.
+    fn resumed(&mut self, _event_loop: &ActiveEventLoop) -> WinitWindowEventResult {
+        WinitWindowEventResult::Propagate
+    }
+
+    /// Re-implement to intercept the [`ApplicationHandler::window_event()`](winit::application::ApplicationHandler::window_event()) event.
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: winit::window::WindowId,
+        winit_window: Option<&winit::window::Window>,
+        slint_window: Option<&i_slint_core::api::Window>,
+        event: &winit::event::WindowEvent,
+    ) -> WinitWindowEventResult {
+        WinitWindowEventResult::Propagate
+    }
+
+    /// Re-implement to intercept the [`ApplicationHandler::new_events()`](winit::application::ApplicationHandler::new_events()) event.
+    fn new_events(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        cause: winit::event::StartCause,
+    ) -> WinitWindowEventResult {
+        WinitWindowEventResult::Propagate
+    }
+
+    /// Re-implement to intercept the [`ApplicationHandler::device_event()`](winit::application::ApplicationHandler::device_event()) event.
+    fn device_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) -> WinitWindowEventResult {
+        WinitWindowEventResult::Propagate
+    }
+
+    /// Re-implement to intercept the [`ApplicationHandler::about_to_wait()`](winit::application::ApplicationHandler::about_to_wait()) event.
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) -> WinitWindowEventResult {
+        WinitWindowEventResult::Propagate
+    }
+
+    /// Re-implement to intercept the [`ApplicationHandler::suspended()`](winit::application::ApplicationHandler::suspended()) event.
+    fn suspended(&mut self, event_loop: &ActiveEventLoop) -> WinitWindowEventResult {
+        WinitWindowEventResult::Propagate
+    }
+
+    /// Re-implement to intercept the [`ApplicationHandler::exiting()`](winit::application::ApplicationHandler::exiting()) event.
+    fn exiting(&mut self, event_loop: &ActiveEventLoop) -> WinitWindowEventResult {
+        WinitWindowEventResult::Propagate
+    }
+
+    /// Re-implement to intercept the [`ApplicationHandler::memory_warning()`](winit::application::ApplicationHandler::memory_warning()) event.
+    fn memory_warning(&mut self, event_loop: &ActiveEventLoop) -> WinitWindowEventResult {
+        WinitWindowEventResult::Propagate
+    }
+}
+
 /// Use the BackendBuilder to configure the properties of the Winit Backend before creating it.
 /// Create the builder using [`Backend::builder()`], then configure it for example with [`Self::with_renderer_name`],
 /// and build the backend using [`Self::build`].
@@ -178,6 +253,7 @@ pub struct BackendBuilder {
     muda_enable_default_menu_bar_bar: bool,
     #[cfg(target_family = "wasm")]
     spawn_event_loop: bool,
+    custom_application_handler: Option<Box<dyn CustomApplicationHandler>>,
 }
 
 impl BackendBuilder {
@@ -246,6 +322,19 @@ impl BackendBuilder {
         self
     }
 
+    /// Configures this builder to use the specified [`CustomApplicationHandler`].
+    ///
+    /// This allow application developer to intercept events from winit.
+    /// Similar to [`winit::application::ApplicationHandler`].
+    #[must_use]
+    pub fn with_custom_application_handler(
+        mut self,
+        handler: impl CustomApplicationHandler + 'static,
+    ) -> Self {
+        self.custom_application_handler = Some(Box::new(handler));
+        self
+    }
+
     /// Builds the backend with the parameters configured previously. Set the resulting backend
     /// with `slint::platform::set_platform()`:
     ///
@@ -293,14 +382,14 @@ impl BackendBuilder {
             #[cfg(feature = "renderer-femtovg-wgpu")]
             (Some("femtovg-wgpu"), maybe_graphics_api) => {
                 if !maybe_graphics_api.is_some_and(|_api| {
-                    #[cfg(feature = "unstable-wgpu-24")]
-                    if matches!(_api, RequestedGraphicsAPI::WGPU24(..)) {
+                    #[cfg(feature = "unstable-wgpu-25")]
+                    if matches!(_api, RequestedGraphicsAPI::WGPU25(..)) {
                         return true;
                     }
                     false
                 }) {
                     return Err(
-                        "The FemtoVG WGPU renderer only supports the WGPU24 graphics API selection"
+                        "The FemtoVG WGPU renderer only supports the WGPU25 graphics API selection"
                             .into(),
                     );
                 }
@@ -337,8 +426,8 @@ impl BackendBuilder {
                     return Err(PlatformError::NoPlatform);
                 }
             }
-            #[cfg(feature = "unstable-wgpu-24")]
-            (None, Some(RequestedGraphicsAPI::WGPU24(..))) => {
+            #[cfg(feature = "unstable-wgpu-25")]
+            (None, Some(RequestedGraphicsAPI::WGPU25(..))) => {
                 renderer::femtovg::WGPUFemtoVGRenderer::new_suspended
             }
             (None, Some(_requested_graphics_api)) => {
@@ -366,6 +455,7 @@ impl BackendBuilder {
             muda_enable_default_menu_bar_bar: self.muda_enable_default_menu_bar_bar,
             #[cfg(target_family = "wasm")]
             spawn_event_loop: self.spawn_event_loop,
+            custom_application_handler: self.custom_application_handler.into(),
         })
     }
 }
@@ -381,6 +471,7 @@ pub(crate) struct SharedBackendData {
     clipboard: std::cell::RefCell<clipboard::ClipboardPair>,
     not_running_event_loop: RefCell<Option<winit::event_loop::EventLoop<SlintEvent>>>,
     event_loop_proxy: winit::event_loop::EventLoopProxy<SlintEvent>,
+    is_wayland: bool,
 }
 
 impl SharedBackendData {
@@ -420,6 +511,15 @@ impl SharedBackendData {
         let event_loop =
             builder.build().map_err(|e| format!("Error initializing winit event loop: {e}"))?;
 
+        cfg_if::cfg_if! {
+            if #[cfg(all(unix, not(target_vendor = "apple"), feature = "wayland"))] {
+                use winit::platform::wayland::EventLoopExtWayland;
+                let is_wayland = event_loop.is_wayland();
+            } else {
+                let is_wayland = false;
+            }
+        }
+
         let event_loop_proxy = event_loop.create_proxy();
         #[cfg(not(target_arch = "wasm32"))]
         let clipboard = crate::clipboard::create_clipboard(
@@ -436,6 +536,7 @@ impl SharedBackendData {
             clipboard: RefCell::new(clipboard),
             not_running_event_loop: RefCell::new(Some(event_loop)),
             event_loop_proxy,
+            is_wayland,
         })
     }
 
@@ -492,8 +593,9 @@ impl SharedBackendData {
 pub struct Backend {
     requested_graphics_api: Option<RequestedGraphicsAPI>,
     renderer_factory_fn: fn(&Rc<SharedBackendData>) -> Box<dyn WinitCompatibleRenderer>,
-    event_loop_state: std::cell::RefCell<Option<crate::event_loop::EventLoopState>>,
+    event_loop_state: RefCell<Option<crate::event_loop::EventLoopState>>,
     shared_data: Rc<SharedBackendData>,
+    custom_application_handler: RefCell<Option<Box<dyn crate::CustomApplicationHandler>>>,
 
     /// This hook is called before a Window is created.
     ///
@@ -554,6 +656,7 @@ impl Backend {
             muda_enable_default_menu_bar_bar: true,
             #[cfg(target_family = "wasm")]
             spawn_event_loop: false,
+            custom_application_handler: None,
         }
     }
 }
@@ -590,11 +693,9 @@ impl i_slint_core::platform::Platform for Backend {
     }
 
     fn run_event_loop(&self) -> Result<(), PlatformError> {
-        let loop_state = self
-            .event_loop_state
-            .borrow_mut()
-            .take()
-            .unwrap_or_else(|| EventLoopState::new(self.shared_data.clone()));
+        let loop_state = self.event_loop_state.borrow_mut().take().unwrap_or_else(|| {
+            EventLoopState::new(self.shared_data.clone(), self.custom_application_handler.take())
+        });
         #[cfg(target_family = "wasm")]
         {
             if self.spawn_event_loop {
@@ -612,11 +713,9 @@ impl i_slint_core::platform::Platform for Backend {
         timeout: core::time::Duration,
         _: i_slint_core::InternalToken,
     ) -> Result<core::ops::ControlFlow<()>, PlatformError> {
-        let loop_state = self
-            .event_loop_state
-            .borrow_mut()
-            .take()
-            .unwrap_or_else(|| EventLoopState::new(self.shared_data.clone()));
+        let loop_state = self.event_loop_state.borrow_mut().take().unwrap_or_else(|| {
+            EventLoopState::new(self.shared_data.clone(), self.custom_application_handler.take())
+        });
         let (new_state, status) = loop_state.pump_events(Some(timeout))?;
         *self.event_loop_state.borrow_mut() = Some(new_state);
         match status {
@@ -700,6 +799,16 @@ mod private {
 #[i_slint_core_macros::slint_doc]
 /// This helper trait can be used to obtain access to the [`winit::window::Window`] for a given
 /// [`slint::Window`](slint:rust:slint/struct.window).
+///
+/// Note that the association of a Slint window with a winit window relies on two factors:
+///
+/// - The winit backend must be in use. You can ensure this programmatically by calling [`slint::BackendSelector::backend_name()`](slint:rust:slint/struct.BackendSelector#method.backend_name)
+///   with "winit" as argument.
+/// - The winit window must've been created. Windowing systems, and by extension winit, require that windows can only be properly
+///   created when certain conditions of the event loop are met. For example, on Android the application can't be suspended. Therefore,
+///   functions like [`Self::has_winit_window()`] or [`Self::with_winit_window()`] will only succeed when the event loop is active.
+///   This is typically the case when callbacks are invoked from the event loop, such as through timers, user input events, or when window
+///   receives events (see also [`Self::on_winit_window_event()`]).
 pub trait WinitWindowAccessor: private::WinitWindowAccessorSealed {
     /// Returns true if a [`winit::window::Window`] exists for this window. This is the case if the window is
     /// backed by this winit backend.
@@ -720,6 +829,52 @@ pub trait WinitWindowAccessor: private::WinitWindowAccessorSealed {
         callback: impl FnMut(&i_slint_core::api::Window, &winit::event::WindowEvent) -> WinitWindowEventResult
             + 'static,
     );
+
+    /// Returns a future that resolves to the [`winit::window::Window`] for this Slint window.
+    /// When the future is ready, the output it resolves to is either `Ok(Arc<winit::window::Window>)` if the window exists,
+    /// or an error if the window has been deleted in the meanwhile or isn't backed by the winit backend.
+    ///
+    /// ```rust,no_run
+    /// // Bring winit and accessor traits into scope.
+    /// use slint::winit_030::{WinitWindowAccessor, winit};
+    ///
+    /// slint::slint!{
+    ///     import { VerticalBox, Button } from "std-widgets.slint";
+    ///     export component HelloWorld inherits Window {
+    ///         callback clicked;
+    ///         VerticalBox {
+    ///             Text {
+    ///                 text: "hello world";
+    ///                 color: green;
+    ///             }
+    ///             Button {
+    ///                 text: "Click me";
+    ///                 clicked => { root.clicked(); }
+    ///             }
+    ///         }
+    ///     }
+    /// }
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     // Make sure the winit backed is selected:
+    ///    slint::BackendSelector::new()
+    ///        .backend_name("winit".into())
+    ///        .select()?;
+    ///
+    ///     let app = HelloWorld::new()?;
+    ///     let app_weak = app.as_weak();
+    ///
+    ///     slint::spawn_local(async move {
+    ///         let app = app_weak.unwrap();
+    ///         let winit_window = app.window().winit_window().await.unwrap();
+    ///         eprintln!("window id = {:#?}", winit_window.id());
+    ///     }).unwrap();
+    ///     app.run()?;
+    ///     Ok(())
+    /// }
+    /// ```
+    fn winit_window(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Arc<winit::window::Window>, PlatformError>>;
 }
 
 impl WinitWindowAccessor for i_slint_core::api::Window {
@@ -740,6 +895,24 @@ impl WinitWindowAccessor for i_slint_core::api::Window {
             .internal(i_slint_core::InternalToken)
             .and_then(|wa| wa.as_any().downcast_ref::<WinitWindowAdapter>())
             .and_then(|adapter| adapter.winit_window().map(|w| callback(&w)))
+    }
+
+    fn winit_window(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Arc<winit::window::Window>, PlatformError>> {
+        Box::pin(async move {
+            let adapter_weak = i_slint_core::window::WindowInner::from_pub(self)
+                .window_adapter()
+                .internal(i_slint_core::InternalToken)
+                .and_then(|wa| wa.as_any().downcast_ref::<WinitWindowAdapter>())
+                .map(|wa| wa.self_weak.clone())
+                .ok_or_else(|| {
+                    PlatformError::OtherError(
+                        format!("Slint window is not backed by a Winit window adapter").into(),
+                    )
+                })?;
+            WinitWindowAdapter::async_winit_window(adapter_weak).await
+        })
     }
 
     fn on_winit_window_event(
@@ -777,21 +950,27 @@ fn test_window_accessor_and_rwh() {
     slint::platform::set_platform(Box::new(crate::Backend::new().unwrap())).unwrap();
 
     use testui::*;
-    let app = App::new().unwrap();
-    app.show().unwrap();
 
-    let app_weak = app.as_weak();
-    app_weak
-        .upgrade_in_event_loop(|app| {
-            let slint_window = app.window();
-            assert!(slint_window.has_winit_window());
-            let handle = slint_window.window_handle();
-            use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-            assert!(handle.window_handle().is_ok());
-            assert!(handle.display_handle().is_ok());
-            slint::quit_event_loop().unwrap();
-        })
-        .unwrap();
+    slint::spawn_local(async move {
+        let app = App::new().unwrap();
+        let slint_window = app.window();
+
+        assert!(!slint_window.has_winit_window());
+
+        // Show() won't immediately create the window, the event loop will have to
+        // spin first.
+        app.show().unwrap();
+
+        let result = slint_window.winit_window().await;
+        assert!(result.is_ok(), "Failed to get winit window: {:?}", result.err());
+        assert!(slint_window.has_winit_window());
+        let handle = slint_window.window_handle();
+        use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+        assert!(handle.window_handle().is_ok());
+        assert!(handle.display_handle().is_ok());
+        slint::quit_event_loop().unwrap();
+    })
+    .unwrap();
 
     slint::run_event_loop().unwrap();
 }

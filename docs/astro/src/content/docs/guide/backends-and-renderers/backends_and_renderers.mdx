@@ -5,8 +5,8 @@ title: Backends & Renderers
 description: Backends & Renderers
 ---
 
-import Link from '/src/components/Link.astro';
-import LangRefLink from '/src/components/LangRefLink.astro';
+import Link from '@slint/common-files/src/components/Link.astro';
+import LangRefLink from '@slint/common-files/src/components/LangRefLink.astro';
 
 
 In Slint, a backend is the module that encapsulates the interaction with the operating system,
@@ -66,7 +66,6 @@ The Qt renderer comes with the <Link type="QtBackend" label="Qt backend" /> and 
   * No image rotation or smooth scaling.
   * No support for `drop-shadow-*` properties.
   * No support for `border-radius` in combination with `clip: true`.
-  * No circular gradients.
   * No text stroking/outlining.
 - Text rendering currently limited to western scripts.
 - Available in the <Link type="WinitBackend" label="Winit backend" />.

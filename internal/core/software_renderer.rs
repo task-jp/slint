@@ -883,10 +883,6 @@ impl RendererSealed for SoftwareRenderer {
         self::fonts::systemfonts::register_font_from_path(path)
     }
 
-    fn default_font_size(&self) -> LogicalLength {
-        self::fonts::DEFAULT_FONT_SIZE
-    }
-
     fn set_window_adapter(&self, window_adapter: &Rc<dyn WindowAdapter>) {
         *self.maybe_window_adapter.borrow_mut() = Some(Rc::downgrade(window_adapter));
         self.partial_rendering_state.clear_cache();
@@ -1013,15 +1009,28 @@ fn render_window_frame_by_line(
                                     extra_right_clip,
                                 );
                             }
-                            SceneCommand::Gradient { gradient_index } => {
-                                let g = &scene.vectors.gradients[gradient_index as usize];
+                            SceneCommand::LinearGradient { linear_gradient_index } => {
+                                let g =
+                                    &scene.vectors.linear_gradients[linear_gradient_index as usize];
 
-                                draw_functions::draw_gradient_line(
+                                draw_functions::draw_linear_gradient(
                                     &PhysicalRect { origin: span.pos, size: span.size },
                                     scene.current_line,
                                     g,
                                     range_buffer,
                                     extra_left_clip,
+                                );
+                            }
+                            SceneCommand::RadialGradient { radial_gradient_index } => {
+                                let g =
+                                    &scene.vectors.radial_gradients[radial_gradient_index as usize];
+                                draw_functions::draw_radial_gradient(
+                                    &PhysicalRect { origin: span.pos, size: span.size },
+                                    scene.current_line,
+                                    g,
+                                    range_buffer,
+                                    extra_left_clip,
+                                    extra_right_clip,
                                 );
                             }
                         }
@@ -1145,7 +1154,8 @@ trait ProcessScene {
 
     fn process_simple_rectangle(&mut self, geometry: PhysicalRect, color: PremultipliedRgbaColor);
     fn process_rounded_rectangle(&mut self, geometry: PhysicalRect, data: RoundedRectangle);
-    fn process_gradient(&mut self, geometry: PhysicalRect, gradient: GradientCommand);
+    fn process_linear_gradient(&mut self, geometry: PhysicalRect, gradient: LinearGradientCommand);
+    fn process_radial_gradient(&mut self, geometry: PhysicalRect, gradient: RadialGradientCommand);
 }
 
 fn process_rectangle_impl(
@@ -1217,7 +1227,7 @@ fn process_rectangle_impl(
                 )
             };
 
-            let gr = GradientCommand {
+            let gr = LinearGradientCommand {
                 color1: s1.color.into(),
                 color2: s2.color.into(),
                 start,
@@ -1242,8 +1252,32 @@ fn process_rectangle_impl(
                 continue;
             }
 
-            processor.process_gradient(act_rect, gr);
+            processor.process_linear_gradient(act_rect, gr);
         }
+        Color::default()
+    } else if let Brush::RadialGradient(g) = &args.background {
+        // Calculate absolute center position of the original geometry
+        let absolute_center_x = geom.min_x() + geom.width() / 2.0;
+        let absolute_center_y = geom.min_y() + geom.height() / 2.0;
+
+        // Convert to coordinates relative to the clipped rectangle
+        let center_x = PhysicalLength::new((absolute_center_x - clipped.min_x()) as i16);
+        let center_y = PhysicalLength::new((absolute_center_y - clipped.min_y()) as i16);
+
+        let radial_grad = RadialGradientCommand {
+            stops: g
+                .stops()
+                .map(|s| {
+                    let mut stop = *s;
+                    stop.color = alpha_color(stop.color, args.alpha);
+                    stop
+                })
+                .collect(),
+            center_x,
+            center_y,
+        };
+
+        processor.process_radial_gradient(clipped.cast(), radial_grad);
         Color::default()
     } else {
         alpha_color(args.background.color(), args.alpha)
@@ -1453,14 +1487,26 @@ impl<B: target_pixel_buffer::TargetPixelBuffer> ProcessScene for RenderToBuffer<
         });
     }
 
-    fn process_gradient(&mut self, geometry: PhysicalRect, g: GradientCommand) {
+    fn process_linear_gradient(&mut self, geometry: PhysicalRect, g: LinearGradientCommand) {
         self.foreach_ranges(&geometry, |line, buffer, extra_left_clip, _extra_right_clip| {
-            draw_functions::draw_gradient_line(
+            draw_functions::draw_linear_gradient(
                 &geometry,
                 PhysicalLength::new(line),
                 &g,
                 buffer,
                 extra_left_clip,
+            );
+        });
+    }
+    fn process_radial_gradient(&mut self, geometry: PhysicalRect, g: RadialGradientCommand) {
+        self.foreach_ranges(&geometry, |line, buffer, extra_left_clip, extra_right_clip| {
+            draw_functions::draw_radial_gradient(
+                &geometry,
+                PhysicalLength::new(line),
+                &g,
+                buffer,
+                extra_left_clip,
+                extra_right_clip,
             );
         });
     }
@@ -1558,16 +1604,29 @@ impl ProcessScene for PrepareScene {
         }
     }
 
-    fn process_gradient(&mut self, geometry: PhysicalRect, gradient: GradientCommand) {
+    fn process_linear_gradient(&mut self, geometry: PhysicalRect, gradient: LinearGradientCommand) {
         let size = geometry.size;
         if !size.is_empty() {
-            let gradient_index = self.vectors.gradients.len() as u16;
-            self.vectors.gradients.push(gradient);
+            let gradient_index = self.vectors.linear_gradients.len() as u16;
+            self.vectors.linear_gradients.push(gradient);
             self.items.push(SceneItem {
                 pos: geometry.origin,
                 size,
                 z: self.items.len() as u16,
-                command: SceneCommand::Gradient { gradient_index },
+                command: SceneCommand::LinearGradient { linear_gradient_index: gradient_index },
+            });
+        }
+    }
+    fn process_radial_gradient(&mut self, geometry: PhysicalRect, gradient: RadialGradientCommand) {
+        let size = geometry.size;
+        if !size.is_empty() {
+            let radial_gradient_index = self.vectors.radial_gradients.len() as u16;
+            self.vectors.radial_gradients.push(gradient);
+            self.items.push(SceneItem {
+                pos: geometry.origin,
+                size,
+                z: self.items.len() as u16,
+                command: SceneCommand::RadialGradient { radial_gradient_index },
             });
         }
     }
@@ -2410,11 +2469,8 @@ impl<T: ProcessScene> crate::item_rendering::ItemRenderer for SceneBuilder<'_, T
             let source_rect = euclid::rect(0, 0, width as _, height as _);
 
             if let Some(clipped_src) = source_rect.intersection(&physical_clip) {
-                let geometry = clipped_src
-                    .translate(
-                        (self.current_state.offset.cast() * self.scale_factor).to_vector().cast(),
-                    )
-                    .round_in();
+                let offset = self.current_state.offset.cast() * self.scale_factor;
+                let geometry = clipped_src.translate(offset.to_vector().cast()).round_in();
 
                 let t = target_pixel_buffer::DrawTextureArgs {
                     data: target_pixel_buffer::TextureDataContainer::Shared {
@@ -2423,8 +2479,8 @@ impl<T: ProcessScene> crate::item_rendering::ItemRenderer for SceneBuilder<'_, T
                     },
                     colorize: None,
                     alpha: (self.current_state.alpha * 255.) as u8,
-                    dst_x: self.current_state.offset.x as _,
-                    dst_y: self.current_state.offset.y as _,
+                    dst_x: offset.x as _,
+                    dst_y: offset.y as _,
                     dst_width: width as _,
                     dst_height: height as _,
                     rotation: self.rotation.orientation,

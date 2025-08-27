@@ -18,6 +18,8 @@ import { WindowGlobal, WindowManager } from "windowglobal.slint";
 import { ColorPickerView } from "components/widgets/floating-brush-picker-widget.slint";
 import { TableEditorView } from "components/spreadsheet-dialog.slint";
 import "./assets/Inter-VariableFont.ttf";
+import "./assets/SourceCodePro-Medium.ttf";
+import { ConsolePanel } from "components/console-panel.slint";
 
 export { Api }
 
@@ -37,7 +39,7 @@ export component PreviewUi inherits Window {
     property <bool> show-color-stop-picker <=> WindowManager.showing-color-stop-picker;
     property <length> initial-floating-x;
 
-    title: "Slint Live-Preview";
+    title: @tr("Slint Live-Preview");
     icon: @image-url("assets/slint-logo-small-light.png");
     always-on-top <=> Api.always-on-top;
 
@@ -91,20 +93,7 @@ export component PreviewUi inherits Window {
                         known-components: Api.known-components;
 
                         preview-area-is-current: preview.preview-is-current;
-                        preview-area-position-x: preview.preview-area-position-x;
-                        preview-area-position-y: preview.preview-area-position-y;
-                        preview-area-width: preview.preview-area-width;
-                        preview-area-height: preview.preview-area-height;
-
                         visible-component: root.visible-component;
-
-                        can-drop(index, x, y, on-drop-area) => {
-                            Api.can-drop(index, x, y, on-drop-area);
-                        }
-
-                        drop(index, x, y) => {
-                            Api.drop(index, x, y);
-                        }
 
                         show-preview-for(name, defined-at) => {
                             Api.show-preview-for(name, defined-at);
@@ -125,7 +114,7 @@ export component PreviewUi inherits Window {
                                 width: EditorSizeSettings.property-bar-width - (EditorSpaceSettings.default-padding*2);
                                 current-index: 0;
                                 Tab {
-                                    title: "Properties";
+                                    title: @tr("Properties");
                                     if tw.current-index == 0: PropertyView {
                                         opacity: preview.preview-is-current ? 1.0 : 0.3;
                                         enabled: preview.preview-is-current;
@@ -133,7 +122,7 @@ export component PreviewUi inherits Window {
                                 }
 
                                 preview_data_tab := Tab {
-                                    title: "Data";
+                                    title: @tr("Data");
                                     if tw.current-index == 1: PreviewDataView {
                                         opacity: preview.preview-is-current ? 1.0 : 0.3;
                                         enabled: preview.preview-is-current;
@@ -144,6 +133,7 @@ export component PreviewUi inherits Window {
                     }
 
                 }
+                ConsolePanel { }
 
                 StatusLine { }
             }

@@ -91,6 +91,10 @@ pub type FontCache = Rc<
     >,
 >;
 
+pub type OpenImportFallback =
+    Rc<dyn Fn(String) -> Pin<Box<dyn Future<Output = Option<std::io::Result<String>>>>>>;
+pub type ResourceUrlMapper = Rc<dyn Fn(&str) -> Pin<Box<dyn Future<Output = Option<String>>>>>;
+
 /// CompilationConfiguration allows configuring different aspects of the compiler.
 #[derive(Clone)]
 pub struct CompilerConfiguration {
@@ -111,14 +115,11 @@ pub struct CompilerConfiguration {
     ///
     /// The callback should open the file specified by the given file name and
     /// return an future that provides the text content of the file as output.
-    pub open_import_fallback: Option<
-        Rc<dyn Fn(String) -> Pin<Box<dyn Future<Output = Option<std::io::Result<String>>>>>>,
-    >,
+    pub open_import_fallback: Option<OpenImportFallback>,
     /// Callback to map URLs for resources
     ///
     /// The function takes the url and returns the mapped URL (or None if not mapped)
-    pub resource_url_mapper:
-        Option<Rc<dyn Fn(&str) -> Pin<Box<dyn Future<Output = Option<String>>>>>>,
+    pub resource_url_mapper: Option<ResourceUrlMapper>,
 
     /// Run the pass that inlines all the elements.
     ///
@@ -147,6 +148,10 @@ pub struct CompilerConfiguration {
 
     /// C++ namespace
     pub cpp_namespace: Option<String>,
+
+    /// When true, fail the build when a binding loop is detected with a window layout property
+    /// (otherwise this is a compatibility warning)
+    pub error_on_binding_loop_with_window_layout: bool,
 
     /// Generate debug information for elements (ids, type names)
     pub debug_info: bool,
@@ -232,6 +237,7 @@ impl CompilerConfiguration {
             translation_domain: None,
             no_native_menu: false,
             cpp_namespace,
+            error_on_binding_loop_with_window_layout: false,
             debug_info,
             debug_hooks: None,
             components_to_generate: ComponentSelection::ExportedWindows,

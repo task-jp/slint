@@ -15,8 +15,8 @@ use super::{
 };
 use crate::graphics::{Brush, Color, FontRequest};
 use crate::input::{
-    key_codes, FocusEvent, FocusEventResult, InputEventFilterResult, InputEventResult, KeyEvent,
-    KeyboardModifiers, MouseEvent, StandardShortcut, TextShortcut,
+    key_codes, FocusEvent, FocusEventResult, FocusReason, InputEventFilterResult, InputEventResult,
+    KeyEvent, KeyboardModifiers, MouseEvent, StandardShortcut, TextShortcut,
 };
 use crate::item_rendering::{CachedRenderingData, ItemRenderer, RenderText};
 use crate::layout::{LayoutInfo, Orientation};
@@ -83,7 +83,7 @@ impl Item for ComplexText {
 
     fn input_event_filter_before_children(
         self: Pin<&Self>,
-        _: MouseEvent,
+        _: &MouseEvent,
         _window_adapter: &Rc<dyn WindowAdapter>,
         _self_rc: &ItemRc,
     ) -> InputEventFilterResult {
@@ -92,7 +92,7 @@ impl Item for ComplexText {
 
     fn input_event(
         self: Pin<&Self>,
-        _: MouseEvent,
+        _: &MouseEvent,
         _window_adapter: &Rc<dyn WindowAdapter>,
         _self_rc: &ItemRc,
     ) -> InputEventResult {
@@ -245,7 +245,7 @@ impl Item for SimpleText {
 
     fn input_event_filter_before_children(
         self: Pin<&Self>,
-        _: MouseEvent,
+        _: &MouseEvent,
         _window_adapter: &Rc<dyn WindowAdapter>,
         _self_rc: &ItemRc,
     ) -> InputEventFilterResult {
@@ -254,7 +254,7 @@ impl Item for SimpleText {
 
     fn input_event(
         self: Pin<&Self>,
-        _: MouseEvent,
+        _: &MouseEvent,
         _window_adapter: &Rc<dyn WindowAdapter>,
         _self_rc: &ItemRc,
     ) -> InputEventResult {
@@ -574,7 +574,7 @@ impl Item for TextInput {
 
     fn input_event_filter_before_children(
         self: Pin<&Self>,
-        _: MouseEvent,
+        _: &MouseEvent,
         _window_adapter: &Rc<dyn WindowAdapter>,
         _self_rc: &ItemRc,
     ) -> InputEventFilterResult {
@@ -583,7 +583,7 @@ impl Item for TextInput {
 
     fn input_event(
         self: Pin<&Self>,
-        event: MouseEvent,
+        event: &MouseEvent,
         window_adapter: &Rc<dyn WindowAdapter>,
         self_rc: &ItemRc,
     ) -> InputEventResult {
@@ -593,7 +593,7 @@ impl Item for TextInput {
         match event {
             MouseEvent::Pressed { position, button: PointerEventButton::Left, click_count } => {
                 let clicked_offset =
-                    self.byte_offset_for_position(position, window_adapter, self_rc) as i32;
+                    self.byte_offset_for_position(*position, window_adapter, self_rc) as i32;
                 self.as_ref().pressed.set((click_count % 3) + 1);
 
                 if !window_adapter.window().0.modifiers.get().shift() {
@@ -630,7 +630,7 @@ impl Item for TextInput {
             }
             MouseEvent::Released { position, button: PointerEventButton::Middle, .. } => {
                 let clicked_offset =
-                    self.byte_offset_for_position(position, window_adapter, self_rc) as i32;
+                    self.byte_offset_for_position(*position, window_adapter, self_rc) as i32;
                 self.as_ref().anchor_position_byte_offset.set(clicked_offset);
                 self.set_cursor_position(
                     clicked_offset,
@@ -655,7 +655,7 @@ impl Item for TextInput {
                 let pressed = self.as_ref().pressed.get();
                 if pressed > 0 {
                     let clicked_offset =
-                        self.byte_offset_for_position(position, window_adapter, self_rc) as i32;
+                        self.byte_offset_for_position(*position, window_adapter, self_rc) as i32;
                     self.set_cursor_position(
                         clicked_offset,
                         true,
@@ -910,7 +910,10 @@ impl Item for TextInput {
         self_rc: &ItemRc,
     ) -> FocusEventResult {
         match event {
-            FocusEvent::FocusIn | FocusEvent::WindowReceivedFocus => {
+            FocusEvent::FocusIn(_reason) => {
+                if !self.enabled() {
+                    return FocusEventResult::FocusIgnored;
+                }
                 self.has_focus.set(true);
                 self.show_cursor(window_adapter);
                 WindowInner::from_pub(window_adapter.window()).set_text_input_focused(true);
@@ -921,12 +924,17 @@ impl Item for TextInput {
                             self.ime_properties(window_adapter, self_rc),
                         ));
                     }
+
+                    #[cfg(not(target_vendor = "apple"))]
+                    if *_reason == FocusReason::TabNavigation {
+                        self.select_all(window_adapter, self_rc);
+                    }
                 }
             }
-            FocusEvent::FocusOut | FocusEvent::WindowLostFocus => {
+            FocusEvent::FocusOut(reason) => {
                 self.has_focus.set(false);
                 self.hide_cursor();
-                if matches!(event, FocusEvent::FocusOut) {
+                if !matches!(reason, FocusReason::WindowActivation | FocusReason::PopupActivation) {
                     self.as_ref()
                         .anchor_position_byte_offset
                         .set(self.as_ref().cursor_position_byte_offset());
@@ -935,8 +943,29 @@ impl Item for TextInput {
                 if !self.read_only() {
                     if let Some(window_adapter) = window_adapter.internal(crate::InternalToken) {
                         window_adapter.input_method_request(InputMethodRequest::Disable);
-                        self.preedit_text.set(Default::default());
                     }
+                    // commit the preedit text on android
+                    #[cfg(target_os = "android")]
+                    {
+                        let preedit_text = self.preedit_text();
+                        if !preedit_text.is_empty() {
+                            let mut text = String::from(self.text());
+                            let cursor_position = self.cursor_position(&text);
+                            text.insert_str(cursor_position, &preedit_text);
+                            self.text.set(text.into());
+                            let new_pos = (cursor_position + preedit_text.len()) as i32;
+                            self.anchor_position_byte_offset.set(new_pos);
+                            self.set_cursor_position(
+                                new_pos,
+                                false,
+                                TextChangeNotify::TriggerCallbacks,
+                                window_adapter,
+                                self_rc,
+                            );
+                            Self::FIELD_OFFSETS.edited.apply_pin(self).call(&());
+                        }
+                    }
+                    self.preedit_text.set(Default::default());
                 }
             }
         }
@@ -1777,7 +1806,11 @@ impl TextInput {
         self_rc: &ItemRc,
     ) {
         if !self.has_focus() {
-            WindowInner::from_pub(window_adapter.window()).set_focus_item(self_rc, true);
+            WindowInner::from_pub(window_adapter.window()).set_focus_item(
+                self_rc,
+                true,
+                FocusReason::PointerClick,
+            );
         } else if !self.read_only() {
             if let Some(w) = window_adapter.internal(crate::InternalToken) {
                 w.input_method_request(InputMethodRequest::Enable(
@@ -1984,7 +2017,7 @@ fn next_word_boundary(text: &str, last_cursor_pos: usize) -> usize {
 }
 
 #[cfg(feature = "ffi")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn slint_textinput_set_selection_offsets(
     text_input: Pin<&TextInput>,
     window_adapter: *const crate::window::ffi::WindowAdapterRcOpaque,
@@ -1999,7 +2032,7 @@ pub unsafe extern "C" fn slint_textinput_set_selection_offsets(
 }
 
 #[cfg(feature = "ffi")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn slint_textinput_select_all(
     text_input: Pin<&TextInput>,
     window_adapter: *const crate::window::ffi::WindowAdapterRcOpaque,
@@ -2012,7 +2045,7 @@ pub unsafe extern "C" fn slint_textinput_select_all(
 }
 
 #[cfg(feature = "ffi")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn slint_textinput_clear_selection(
     text_input: Pin<&TextInput>,
     window_adapter: *const crate::window::ffi::WindowAdapterRcOpaque,
@@ -2025,7 +2058,7 @@ pub unsafe extern "C" fn slint_textinput_clear_selection(
 }
 
 #[cfg(feature = "ffi")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn slint_textinput_cut(
     text_input: Pin<&TextInput>,
     window_adapter: *const crate::window::ffi::WindowAdapterRcOpaque,
@@ -2038,7 +2071,7 @@ pub unsafe extern "C" fn slint_textinput_cut(
 }
 
 #[cfg(feature = "ffi")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn slint_textinput_copy(
     text_input: Pin<&TextInput>,
     window_adapter: *const crate::window::ffi::WindowAdapterRcOpaque,
@@ -2051,7 +2084,7 @@ pub unsafe extern "C" fn slint_textinput_copy(
 }
 
 #[cfg(feature = "ffi")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn slint_textinput_paste(
     text_input: Pin<&TextInput>,
     window_adapter: *const crate::window::ffi::WindowAdapterRcOpaque,
@@ -2080,7 +2113,7 @@ pub fn slint_text_item_fontmetrics(
 }
 
 #[cfg(feature = "ffi")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn slint_cpp_text_item_fontmetrics(
     window_adapter: *const crate::window::ffi::WindowAdapterRcOpaque,
     self_component: &vtable::VRc<crate::item_tree::ItemTreeVTable>,

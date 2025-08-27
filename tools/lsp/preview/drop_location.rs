@@ -750,42 +750,8 @@ pub fn can_drop_at(
 
     let dm = find_drop_location(&component_instance, position, &component.name);
 
-    let can_drop = if let Some(dm) = &dm {
-        // Cache compilation results:
-        #[derive(Clone, Debug, Hash, Eq, PartialEq)]
-        struct CacheEntry {
-            component_type: String,
-            target_element: by_address::ByAddress<object_tree::ElementRc>,
-            target_node_index: usize,
-            child_index: usize,
-        }
-        let cache_entry = CacheEntry {
-            component_type: component.name.to_string(),
-            target_element: by_address::ByAddress(dm.target_element_node.element.clone()),
-            target_node_index: dm.target_element_node.debug_index,
-            child_index: dm.child_index,
-        };
-
-        thread_local!(static CACHE: RefCell<clru::CLruCache<CacheEntry, bool>> = RefCell::new(clru::CLruCache::new(NonZeroUsize::new(10).unwrap())));
-        CACHE.with_borrow_mut(|cache| {
-            if let Some(does_compile) = cache.get(&cache_entry) {
-                *does_compile
-            } else {
-                let does_compile = if let Some((edit, _)) =
-                    create_drop_element_workspace_edit(document_cache, component, dm)
-                {
-                    workspace_edit_compiles(document_cache, &edit)
-                        == preview::CompilationResult::ChangeCompiles
-                } else {
-                    false
-                };
-                cache.put(cache_entry, does_compile);
-                does_compile
-            }
-        })
-    } else {
-        false
-    };
+    let can_drop =
+        if let Some(dm) = &dm { check_can_drop(document_cache, component, dm) } else { false };
 
     if can_drop {
         preview::set_drop_mark(&dm.unwrap().drop_mark);
@@ -794,6 +760,46 @@ pub fn can_drop_at(
     }
 
     can_drop
+}
+
+/// Do a compilation to figure out if the drop is allowed
+fn check_can_drop(
+    document_cache: &common::DocumentCache,
+    component: &common::ComponentInformation,
+    dm: &DropInformation,
+) -> bool {
+    // Cache compilation results:
+    #[derive(Clone, Debug, Hash, Eq, PartialEq)]
+    struct CacheEntry {
+        component_type: String,
+        target_element: by_address::ByAddress<object_tree::ElementRc>,
+        target_node_index: usize,
+        child_index: usize,
+    }
+    let cache_entry = CacheEntry {
+        component_type: component.name.to_string(),
+        target_element: by_address::ByAddress(dm.target_element_node.element.clone()),
+        target_node_index: dm.target_element_node.debug_index,
+        child_index: dm.child_index,
+    };
+
+    thread_local!(static CACHE: RefCell<clru::CLruCache<CacheEntry, bool>> = RefCell::new(clru::CLruCache::new(NonZeroUsize::new(10).unwrap())));
+    CACHE.with_borrow_mut(|cache| {
+        if let Some(does_compile) = cache.get(&cache_entry) {
+            *does_compile
+        } else {
+            let does_compile = if let Some((edit, _)) =
+                create_drop_element_workspace_edit(document_cache, component, dm)
+            {
+                workspace_edit_compiles(document_cache, &edit)
+                    == preview::CompilationResult::ChangeCompiles
+            } else {
+                false
+            };
+            cache.put(cache_entry, does_compile);
+            does_compile
+        }
+    })
 }
 
 pub fn workspace_edit_compiles(
@@ -819,7 +825,7 @@ pub fn workspace_edit_compiles(
     }) {
         diag = BuildDiagnostics::default(); // reset errors that might be due to missing changes elsewhere
 
-        let _ = preview::poll_once(document_cache.load_url(&u, None, c, &mut diag));
+        let _ = common::poll_once(document_cache.load_url(&u, None, c, &mut diag));
     }
 
     if diag.has_errors() {
@@ -969,6 +975,10 @@ pub fn drop_at(
 
     let drop_info = find_drop_location(&component_instance, position, &component.name)?;
 
+    if !check_can_drop(document_cache, component, &drop_info) {
+        return None;
+    }
+
     create_drop_element_workspace_edit(document_cache, component, &drop_info)
 }
 
@@ -1049,14 +1059,21 @@ pub fn create_drop_element_workspace_edit(
 ) -> Option<(lsp_types::WorkspaceEdit, DropData)> {
     let placeholder = if component.is_layout { placeholder() } else { String::new() };
 
+    let is_list_view = drop_info.target_element_node.with_element_node(|node| {
+        node.QualifiedName().is_some_and(|qn| qn.text().to_string().trim() == "ListView")
+    });
+    let for_loop = if is_list_view { "for _ in 3: " } else { "" };
+
     let new_text = if component.default_properties.is_empty() {
         format!(
-            "{}{} {{{placeholder} }}\n{}",
+            "{}{for_loop}{} {{{placeholder} }}\n{}",
             drop_info.insert_info.pre_indent, component.name, drop_info.insert_info.post_indent
         )
     } else {
-        let mut to_insert =
-            format!("{}{} {{{placeholder}\n", drop_info.insert_info.pre_indent, component.name);
+        let mut to_insert = format!(
+            "{}{for_loop}{} {{{placeholder}\n",
+            drop_info.insert_info.pre_indent, component.name
+        );
         for p in &component.default_properties {
             to_insert += &format!("{}    {}: {};\n", drop_info.insert_info.indent, p.name, p.value);
         }

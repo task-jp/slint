@@ -503,7 +503,7 @@ impl ElementType {
         match self {
             Self::Component(component) => {
                 let base_type = match &*component.child_insertion_point.borrow() {
-                    Some(insert_in) => insert_in.0.borrow().base_type.clone(),
+                    Some(insert_in) => insert_in.parent.borrow().base_type.clone(),
                     None => {
                         let base_type = component.root_element.borrow().base_type.clone();
                         if base_type == tr.empty_type() {
@@ -733,7 +733,7 @@ pub struct PropertyLookupResult<'a> {
     pub declared_pure: Option<bool>,
     /// True if the property is part of the current component (for visibility purposes)
     pub is_local_to_component: bool,
-    /// True if the property in the direct base of the component (for visibility purposes)
+    /// True if the property in the direct base of the component (for protected visibility purposes)
     pub is_in_direct_base: bool,
 
     /// If the property is a builtin function

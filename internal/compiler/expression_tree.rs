@@ -104,6 +104,9 @@ pub enum BuiltinFunction {
     Translate,
     UpdateTimers,
     DetectOperatingSystem,
+    StartTimer,
+    StopTimer,
+    RestartTimer,
 }
 
 #[derive(Debug, Clone)]
@@ -260,7 +263,12 @@ declare_builtin_function_types!(
     Translate: (Type::String, Type::String, Type::String, Type::Array(Type::String.into())) -> Type::String,
     Use24HourFormat: () -> Type::Bool,
     UpdateTimers: () -> Type::Void,
-    DetectOperatingSystem: () -> Type::String,
+    DetectOperatingSystem: () -> Type::Enumeration(
+        typeregister::BUILTIN.with(|e| e.enums.OperatingSystemType.clone()),
+    ),
+    StartTimer: (Type::ElementReference) -> Type::Void,
+    StopTimer: (Type::ElementReference) -> Type::Void,
+    RestartTimer: (Type::ElementReference) -> Type::Void,
 );
 
 impl BuiltinFunction {
@@ -348,6 +356,9 @@ impl BuiltinFunction {
             BuiltinFunction::Use24HourFormat => false,
             BuiltinFunction::UpdateTimers => false,
             BuiltinFunction::DetectOperatingSystem => true,
+            BuiltinFunction::StartTimer => false,
+            BuiltinFunction::StopTimer => false,
+            BuiltinFunction::RestartTimer => false,
         }
     }
 
@@ -421,6 +432,9 @@ impl BuiltinFunction {
             BuiltinFunction::Use24HourFormat => true,
             BuiltinFunction::UpdateTimers => false,
             BuiltinFunction::DetectOperatingSystem => true,
+            BuiltinFunction::StartTimer => false,
+            BuiltinFunction::StopTimer => false,
+            BuiltinFunction::RestartTimer => false,
         }
     }
 }
