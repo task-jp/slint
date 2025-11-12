@@ -353,20 +353,27 @@ impl slint::platform::Platform for StmBackend {
                 });
 
                 // handle touch event
-                let touch = ft5336.detect_touch(&mut inner.touch_i2c).unwrap();
+                let touch = ft5336.detect_touch(&mut inner.touch_i2c).ok();
                 let button = slint::platform::PointerEventButton::Left;
-                let event = if touch > 0 {
-                    let state = ft5336.get_touch(&mut inner.touch_i2c, 1).unwrap();
-                    let position = slint::PhysicalPosition::new(state.y as i32, state.x as i32)
-                        .to_logical(window.scale_factor());
-                    Some(match last_touch.replace(position) {
-                        Some(_) => slint::platform::WindowEvent::PointerMoved { position },
-                        None => slint::platform::WindowEvent::PointerPressed { position, button },
-                    })
+                let event = if let Some(touch_count) = touch {
+                    if touch_count > 0 {
+                        if let Ok(state) = ft5336.get_touch(&mut inner.touch_i2c, 1) {
+                            let position = slint::PhysicalPosition::new(state.y as i32, state.x as i32)
+                                .to_logical(window.scale_factor());
+                            Some(match last_touch.replace(position) {
+                                Some(_) => slint::platform::WindowEvent::PointerMoved { position },
+                                None => slint::platform::WindowEvent::PointerPressed { position, button },
+                            })
+                        } else {
+                            None
+                        }
+                    } else {
+                        last_touch.take().map(|position| {
+                            slint::platform::WindowEvent::PointerReleased { position, button }
+                        })
+                    }
                 } else {
-                    last_touch.take().map(|position| {
-                        slint::platform::WindowEvent::PointerReleased { position, button }
-                    })
+                    None
                 };
 
                 if let Some(event) = event {

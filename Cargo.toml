@@ -185,6 +185,7 @@ windows-core = { version = "0.62.0" }
 [profile.release]
 lto = true
 panic = "abort"
+opt-level = "z"  # Optimize for size (needed for STM32H735G FLASH constraints)
 
 [profile.dev]
 panic = "abort"

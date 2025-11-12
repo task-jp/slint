@@ -2,4 +2,4 @@
 # SPDX-License-Identifier: MIT
 
 link_args = ["--nmagic", "-Tlink.x", "-Tdefmt.x"]
-link_search_path = ["."]
+# link_search_path removed: memory.x is now copied to OUT_DIR in build.rs
