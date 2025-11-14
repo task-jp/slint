@@ -1,0 +1,197 @@
+// Copyright © SixtyFPS GmbH <info@slint.dev>
+// SPDX-License-Identifier: MIT
+
+import { VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export component MainWindow inherits Window {
+    width: 800px;
+    height: 600px;
+    background: #1a1a1a;
+
+    in-out property <float> target-x;
+    in-out property <float> target-y;
+    in-out property <bool> calibration-complete: false;
+    in-out property <string> progress-text: "";
+    in-out property <string> calibration-result: "";
+    in-out property <int> current-point: 0;
+    in-out property <int> total-points: 5;
+
+    callback point-clicked(/* x */ float, /* y */ float);
+    callback restart-calibration();
+
+    // Main touch area
+    touch-area := TouchArea {
+        width: 100%;
+        height: 100%;
+
+        clicked => {
+            if (!calibration-complete) {
+                point-clicked(self.mouse-x / root.width, self.mouse-y / root.height);
+            }
+        }
+    }
+
+    // Calibration target (crosshair)
+    if (!calibration-complete): Rectangle {
+        property <length> target-size: 50px;
+        property <color> target-color: #00ff00;
+        property <length> pos-x: root.width * target-x;
+        property <length> pos-y: root.height * target-y;
+
+        x: pos-x - target-size / 2;
+        y: pos-y - target-size / 2;
+        width: target-size;
+        height: target-size;
+
+        animate x, y {
+            duration: 400ms;
+            easing: ease-out-back;
+        }
+
+        // Outer circle
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            border-radius: parent.target-size / 2;
+            border-width: 3px;
+            border-color: parent.target-color;
+            background: transparent;
+        }
+
+        // Inner circle (pulsing animation)
+        Rectangle {
+            x: parent.width / 2 - 5px;
+            y: parent.height / 2 - 5px;
+            width: 10px;
+            height: 10px;
+            border-radius: 5px;
+            background: parent.target-color;
+            opacity: 0.5 + 0.5 * abs(sin(animation-tick() / 1s * 360deg));
+        }
+
+        // Vertical line
+        Rectangle {
+            x: parent.width / 2 - 1px;
+            y: 0;
+            width: 2px;
+            height: 100%;
+            background: parent.target-color;
+        }
+
+        // Horizontal line
+        Rectangle {
+            x: 0;
+            y: parent.height / 2 - 1px;
+            width: 100%;
+            height: 2px;
+            background: parent.target-color;
+        }
+    }
+
+    // Instruction text
+    VerticalLayout {
+        alignment: start;
+        padding: 20px;
+
+        Text {
+            text: calibration-complete ? @tr("Calibration Complete!") : @tr("Touch the target");
+            color: white;
+            font-size: 24px;
+            horizontal-alignment: center;
+        }
+
+        if (!calibration-complete): VerticalLayout {
+            spacing: 10px;
+
+            Text {
+                text: progress-text;
+                color: #aaaaaa;
+                font-size: 18px;
+                horizontal-alignment: center;
+            }
+
+            // Progress bar
+            HorizontalLayout {
+                alignment: center;
+
+                Rectangle {
+                    width: 300px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: #333333;
+
+                    Rectangle {
+                        x: 0px;
+                        width: parent.width * current-point / total-points;
+                        height: 100%;
+                        border-radius: 4px;
+                        background: #00ff00;
+
+                        animate width {
+                            duration: 300ms;
+                            easing: ease-out;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Completion message and restart button
+    if (calibration-complete): VerticalLayout {
+        alignment: center;
+        spacing: 20px;
+
+        Text {
+            text: @tr("✓ Calibration Complete!");
+            color: #00ff00;
+            font-size: 32px;
+            horizontal-alignment: center;
+        }
+
+        if (calibration-result != ""): VerticalLayout {
+            spacing: 5px;
+
+            Text {
+                text: @tr("Calibration Matrix:");
+                color: #888888;
+                font-size: 14px;
+                horizontal-alignment: center;
+            }
+
+            Text {
+                text: calibration-result;
+                color: #aaaaaa;
+                font-size: 14px;
+                font-family: "monospace";
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+        }
+
+        HorizontalLayout {
+            alignment: center;
+
+            Rectangle {
+                width: 200px;
+                height: 50px;
+                border-radius: 8px;
+                background: restart-btn.has-hover ? #3a7bc8 : #2563b8;
+
+                restart-btn := TouchArea {
+                    clicked => {
+                        restart-calibration();
+                    }
+                }
+
+                Text {
+                    text: @tr("Restart");
+                    color: white;
+                    font-size: 20px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+}
