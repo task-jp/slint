@@ -29,3 +29,14 @@ sw-renderer = []
 wasm-bindgen = { version = "0.2" }
 web-sys = { version = "0.3", features = ["console"] }
 console_error_panic_hook = "0.1.5"
+
+# Android settings
+[package.metadata.android]
+package = "dev.slint.demos.homeautomation"
+resources = "android-res"
+build_targets = ["aarch64-linux-android"]
+
+[package.metadata.android.application]
+label = "Home Automation"
+icon = "@mipmap/ic_launcher"
+theme = "@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"

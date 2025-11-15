@@ -8,9 +8,13 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.Window;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
+import android.os.Build;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -407,12 +411,51 @@ public class SlintAndroidJavaHelper {
         this.mActivity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                if (isFullscreenTheme()) {
+                    hideSystemBars();
+                }
+
                 FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
                         FrameLayout.LayoutParams.MATCH_PARENT);
                 mActivity.addContentView(mInputView, params);
                 mInputView.setVisibility(View.VISIBLE);
             }
         });
+    }
+
+    private boolean isFullscreenTheme() {
+        try {
+            android.content.pm.ApplicationInfo appInfo = mActivity.getApplicationInfo();
+            int themeResId = appInfo.theme;
+            String themeName = mActivity.getResources().getResourceEntryName(themeResId);
+            return themeName != null &&
+                   (themeName.contains("Fullscreen") ||
+                    themeName.contains("NoActionBar"));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void hideSystemBars() {
+        Window window = mActivity.getWindow();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // API 30 and above: Use WindowInsetsController
+            WindowInsetsController controller = window.getInsetsController();
+            if (controller != null) {
+                controller.hide(WindowInsets.Type.systemBars());
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        } else {
+            // API 19-29: Use setSystemUiVisibility
+            View decorView = window.getDecorView();
+            int flags = View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+            decorView.setSystemUiVisibility(flags);
+        }
     }
 
     public void show_keyboard() {

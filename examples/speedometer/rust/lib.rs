@@ -9,9 +9,14 @@ slint::slint! {
     export { MainWindow } from "../demo.slint";
 }
 
-#[cfg(not(feature = "sw-renderer"))]
+#[cfg(all(not(feature = "sw-renderer"), not(target_os = "android")))]
 slint::slint! {
     export { MainWindow } from "../demo.slint";
+}
+
+#[cfg(all(not(feature = "sw-renderer"), target_os = "android"))]
+slint::slint! {
+    export { MainWindow } from "../demo-centered.slint";
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
@@ -24,4 +29,11 @@ pub fn main() {
     let app = MainWindow::new().expect("MainWindow::new() failed");
 
     app.run().expect("MainWindow::run() failed");
+}
+
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+fn android_main(android_app: slint::android::AndroidApp) {
+    slint::android::init(android_app).unwrap();
+    main();
 }
