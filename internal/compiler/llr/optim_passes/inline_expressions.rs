@@ -132,6 +132,7 @@ fn builtin_function_cost(function: &BuiltinFunction) -> isize {
         BuiltinFunction::ArrayLength => 50,
         BuiltinFunction::Rgb => 50,
         BuiltinFunction::Hsv => 50,
+        BuiltinFunction::Oklch => 50,
         BuiltinFunction::ImplicitLayoutInfo(_) => isize::MAX,
         BuiltinFunction::ItemAbsolutePosition => isize::MAX,
         BuiltinFunction::RegisterCustomFontByPath => isize::MAX,

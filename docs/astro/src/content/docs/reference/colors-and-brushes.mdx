@@ -67,6 +67,16 @@ Returns a color using HSV (Hue, Saturation, Value) coordinates. The hue paramete
 representing degrees (0-360) and wraps around (e.g., 480 becomes 120).
 The saturation, value, and optional alpha parameter are expected to be within the range of 0 and 1.
 
+### oklch(l: float, c: float, h: float) -> color
+### oklch(l: float, c: float, h: float, a: float) -> color
+
+Returns a color using the Oklch color space (a perceptually uniform color space).
+
+- `l` (lightness): 0 (black) to 1 (white)
+- `c` (chroma): 0 (grayscale) to ~0.4 (vivid)
+- `h` (hue): 0-360 degrees
+- `a` (alpha): 0-1, defaults to 1
+
 ## Color Methods
 All colors and brushes define the following methods:
 

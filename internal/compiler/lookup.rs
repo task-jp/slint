@@ -819,6 +819,7 @@ impl LookupObject for ColorFunctions {
         None.or_else(|| f("rgb", BuiltinMacroFunction::Rgb))
             .or_else(|| f("rgba", BuiltinMacroFunction::Rgb))
             .or_else(|| f("hsv", BuiltinMacroFunction::Hsv))
+            .or_else(|| f("oklch", BuiltinMacroFunction::Oklch))
     }
 }
 

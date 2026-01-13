@@ -3285,6 +3285,16 @@ fn compile_builtin_function_call(
                 sp::Color::from_hsva(#h as f32, s, v, a)
             })
         }
+        BuiltinFunction::Oklch => {
+            let (l, c, h, alpha) =
+                (a.next().unwrap(), a.next().unwrap(), a.next().unwrap(), a.next().unwrap());
+            quote!({
+                let l: f32 = (#l as f32).max(0.).min(1.) as f32;
+                let c: f32 = (#c as f32).max(0.) as f32;
+                let alpha: f32 = (#alpha as f32).max(0.).min(1.) as f32;
+                sp::Color::from_oklcha(l, c, #h as f32, alpha)
+            })
+        }
         BuiltinFunction::ColorScheme => {
             let window_adapter_tokens = access_window_adapter_field(ctx);
             quote!(sp::WindowInner::from_pub(#window_adapter_tokens.window()).color_scheme())

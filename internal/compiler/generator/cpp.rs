@@ -4016,6 +4016,14 @@ fn compile_builtin_function_call(
                 a = a.next().unwrap(),
             )
         }
+        BuiltinFunction::Oklch => {
+            format!("slint::Color::from_oklcha(std::clamp(static_cast<float>({l}), 0.f, 1.f), std::max(static_cast<float>({c}), 0.f), static_cast<float>({h}), std::clamp(static_cast<float>({alpha}), 0.f, 1.f))",
+                l = a.next().unwrap(),
+                c = a.next().unwrap(),
+                h = a.next().unwrap(),
+                alpha = a.next().unwrap(),
+            )
+        }
         BuiltinFunction::ColorScheme => {
             format!("{}.color_scheme()", access_window_field(ctx))
         }

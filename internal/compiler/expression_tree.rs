@@ -84,6 +84,7 @@ pub enum BuiltinFunction {
     ArrayLength,
     Rgb,
     Hsv,
+    Oklch,
     ColorScheme,
     SupportsNativeMenuBar,
     /// Setup the menu bar
@@ -142,6 +143,7 @@ pub enum BuiltinMacroFunction {
     /// transform the argument so it is always rgb(r, g, b, a) with r, g, b between 0 and 255.
     Rgb,
     Hsv,
+    Oklch,
     /// transform `debug(a, b, c)` into debug `a + " " + b + " " + c`
     Debug,
 }
@@ -247,6 +249,7 @@ declare_builtin_function_types!(
     ArrayLength: (Type::Model) -> Type::Int32,
     Rgb: (Type::Int32, Type::Int32, Type::Int32, Type::Float32) -> Type::Color,
     Hsv: (Type::Float32, Type::Float32, Type::Float32, Type::Float32) -> Type::Color,
+    Oklch: (Type::Float32, Type::Float32, Type::Float32, Type::Float32) -> Type::Color,
     ColorScheme: () -> Type::Enumeration(
         typeregister::BUILTIN.with(|e| e.enums.ColorScheme.clone()),
     ),
@@ -359,6 +362,7 @@ impl BuiltinFunction {
             BuiltinFunction::ArrayLength => true,
             BuiltinFunction::Rgb => true,
             BuiltinFunction::Hsv => true,
+            BuiltinFunction::Oklch => true,
             BuiltinFunction::SetTextInputFocused => false,
             BuiltinFunction::TextInputFocused => false,
             BuiltinFunction::ImplicitLayoutInfo(_) => false,
@@ -438,6 +442,7 @@ impl BuiltinFunction {
             BuiltinFunction::ArrayLength => true,
             BuiltinFunction::Rgb => true,
             BuiltinFunction::Hsv => true,
+            BuiltinFunction::Oklch => true,
             BuiltinFunction::ImplicitLayoutInfo(_) => true,
             BuiltinFunction::ItemAbsolutePosition => true,
             BuiltinFunction::SetTextInputFocused => false,

@@ -1274,6 +1274,16 @@ fn call_builtin_function(
             let a = (1. * a).clamp(0., 1.);
             Value::Brush(Brush::SolidColor(Color::from_hsva(h, s, v, a)))
         }
+        BuiltinFunction::Oklch => {
+            let l: f32 = eval_expression(&arguments[0], local_context).try_into().unwrap();
+            let c: f32 = eval_expression(&arguments[1], local_context).try_into().unwrap();
+            let h: f32 = eval_expression(&arguments[2], local_context).try_into().unwrap();
+            let a: f32 = eval_expression(&arguments[3], local_context).try_into().unwrap();
+            let l = l.clamp(0., 1.);
+            let c = c.max(0.);
+            let a = a.clamp(0., 1.);
+            Value::Brush(Brush::SolidColor(Color::from_oklcha(l, c, h, a)))
+        }
         BuiltinFunction::ColorScheme => local_context
             .component_instance
             .window_adapter()
