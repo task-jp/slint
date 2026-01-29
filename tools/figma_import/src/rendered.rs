@@ -151,15 +151,35 @@ fn render_vector(
     _doc: &Document,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     if !vector.fillGeometry.is_empty() || !vector.strokeGeometry.is_empty() {
-        for p in vector.fillGeometry.iter().chain(vector.strokeGeometry.iter()) {
+        // Combine all fill geometries into a single Path element
+        if !vector.fillGeometry.is_empty() {
             rc.begin_element("Path", &vector.node, Some(&vector.absoluteBoundingBox))?;
-            writeln!(rc, "commands: \"{}\";", p.path)?;
-            writeln!(rc, "fill-rule: {};", p.windingRule.to_ascii_lowercase())?;
+            let combined_commands: String =
+                vector.fillGeometry.iter().map(|p| p.path.as_str()).collect::<Vec<_>>().join(" ");
+            writeln!(rc, "commands: \"{}\";", combined_commands)?;
+            if let Some(first) = vector.fillGeometry.first() {
+                writeln!(rc, "fill-rule: {};", first.windingRule.to_ascii_lowercase())?;
+            }
             if vector.strokeWeight > 0. {
                 writeln!(rc, "stroke-width: {}px;", vector.strokeWeight)?;
             }
             handle_last_visible_paint(&vector.strokes, rc, "stroke")?;
             handle_last_visible_paint(&vector.fills, rc, "fill")?;
+            rc.end_element()?;
+        }
+        // Handle stroke geometries separately when there are no fill geometries
+        if !vector.strokeGeometry.is_empty() && vector.fillGeometry.is_empty() {
+            rc.begin_element("Path", &vector.node, Some(&vector.absoluteBoundingBox))?;
+            let combined_commands: String =
+                vector.strokeGeometry.iter().map(|p| p.path.as_str()).collect::<Vec<_>>().join(" ");
+            writeln!(rc, "commands: \"{}\";", combined_commands)?;
+            if let Some(first) = vector.strokeGeometry.first() {
+                writeln!(rc, "fill-rule: {};", first.windingRule.to_ascii_lowercase())?;
+            }
+            if vector.strokeWeight > 0. {
+                writeln!(rc, "stroke-width: {}px;", vector.strokeWeight)?;
+            }
+            handle_last_visible_paint(&vector.strokes, rc, "stroke")?;
             rc.end_element()?;
         }
         return Ok(false);
