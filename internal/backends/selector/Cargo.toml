@@ -24,6 +24,7 @@ backend-linuxkms = ["i-slint-backend-linuxkms/libseat"]
 backend-linuxkms-noseat = ["i-slint-backend-linuxkms"]
 backend-qt = ["i-slint-backend-qt/enable"]
 backend-testing = ["i-slint-backend-testing/internal"]
+backend-vnc = ["dep:i-slint-backend-vnc"]
 
 renderer-femtovg = [
   "dep:i-slint-renderer-femtovg",
@@ -82,6 +83,7 @@ i-slint-core-macros = { workspace = true }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 i-slint-backend-winit = { workspace = true, features = ["default", "muda"], optional = true }
+i-slint-backend-vnc = { workspace = true, optional = true }
 i-slint-renderer-skia = { workspace = true, optional = true }
 i-slint-renderer-femtovg = { workspace = true, optional = true }
 
@@ -100,6 +102,9 @@ i-slint-common = { workspace = true }
 
 [dev-dependencies]
 slint = { path = "../../../api/rs/slint", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-software", "unstable-winit-030"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(no_qt)"] }
 
 [package.metadata.docs.rs]
 features = ["renderer-software"]

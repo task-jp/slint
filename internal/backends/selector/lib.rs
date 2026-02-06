@@ -7,7 +7,8 @@
     not(any(
         feature = "i-slint-backend-qt",
         feature = "i-slint-backend-winit",
-        feature = "i-slint-backend-linuxkms"
+        feature = "i-slint-backend-linuxkms",
+        feature = "backend-vnc"
     )),
     no_std
 )]
@@ -35,6 +36,11 @@ fn create_linuxkms_backend() -> Result<Box<dyn Platform + 'static>, PlatformErro
     Ok(Box::new(i_slint_backend_linuxkms::BackendBuilder::default().build()?))
 }
 
+#[cfg(all(feature = "backend-vnc", not(target_os = "android")))]
+fn create_vnc_backend() -> Result<Box<dyn Platform + 'static>, PlatformError> {
+    i_slint_backend_vnc::VncBackendBuilder::new().build()
+}
+
 cfg_if::cfg_if! {
     if #[cfg(target_os = "android")] {
         const DEFAULT_BACKEND_NAME: &str = "";
@@ -56,7 +62,8 @@ cfg_if::cfg_if! {
     if #[cfg(all(not(target_os = "android"), any(
             all(feature = "i-slint-backend-qt", not(no_qt)),
             feature = "i-slint-backend-winit",
-            all(feature = "i-slint-backend-linuxkms", target_os = "linux")
+            all(feature = "i-slint-backend-linuxkms", target_os = "linux"),
+            feature = "backend-vnc"
         )))] {
         fn create_default_backend() -> Result<Box<dyn Platform + 'static>, PlatformError> {
             use alloc::borrow::Cow;
@@ -112,6 +119,8 @@ cfg_if::cfg_if! {
                 "testing" => return Ok(Box::new(i_slint_backend_testing::TestingBackend::new(
                     i_slint_backend_testing::TestingBackendOptions { mock_time: false, threading: true },
                 ))),
+                #[cfg(all(feature = "backend-vnc", not(target_os = "android")))]
+                "vnc" => return create_vnc_backend(),
                 _ => {},
             }
 

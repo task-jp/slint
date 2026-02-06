@@ -178,6 +178,11 @@ backend-linuxkms = ["i-slint-backend-selector/backend-linuxkms", "std"]
 ## windowing system.
 backend-linuxkms-noseat = ["i-slint-backend-selector/backend-linuxkms-noseat", "std"]
 
+## VNC backend renders the application and serves it via VNC protocol for remote access.
+## Use `SLINT_BACKEND=vnc` environment variable to select this backend at runtime.
+## Configure with `SLINT_VNC_SIZE=800x600` and `SLINT_VNC_DISPLAY=:1` (port = 5900 + display number).
+backend-vnc = ["i-slint-backend-selector/backend-vnc", "std"]
+
 ## Use the backend based on the [android-activity](https://docs.rs/android-activity) crate. (Using it's native activity feature)
 backend-android-activity-06 = [
   "i-slint-backend-android-activity/native-activity",

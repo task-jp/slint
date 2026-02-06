@@ -4801,6 +4801,7 @@ dependencies = [
  "i-slint-backend-linuxkms",
  "i-slint-backend-qt",
  "i-slint-backend-testing",
+ "i-slint-backend-vnc",
  "i-slint-backend-winit",
  "i-slint-common",
  "i-slint-core",
@@ -4827,6 +4828,18 @@ dependencies = [
  "quick-protobuf",
  "slint",
  "vtable",
+]
+
+[[package]]
+name = "i-slint-backend-vnc"
+version = "1.16.0"
+dependencies = [
+ "bytemuck",
+ "i-slint-common",
+ "i-slint-core",
+ "i-slint-renderer-software",
+ "log",
+ "tokio",
 ]
 
 [[package]]
