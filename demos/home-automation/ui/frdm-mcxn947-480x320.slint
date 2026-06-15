@@ -1,0 +1,45 @@
+// Copyright © SixtyFPS GmbH <info@slint.dev>
+// SPDX-License-Identifier: MIT
+
+// Reproduces the FRDM-MCXN947 + LCD-PAR-S035 board target on the desktop, no
+// hardware required. The 480x320 panel is driven with a 0.5 device-pixel-ratio,
+// so the UI is laid out at 960x640 *logical* pixels and the software renderer
+// scales it down to the 480x320 physical panel. The window below therefore uses
+// the logical 960x640 size — that is what determines the layout, font sizes and
+// tile thresholds, so the on-screen result matches the board.
+//
+// Just preview this file to see/edit the board layout (renders at 960x640):
+//
+//   cargo run --release -p slint-viewer -- demos/home-automation/ui/frdm-mcxn947-480x320.slint
+//
+// For a pixel-exact match of the board (downscaled to the real 480x320 panel),
+// add the board's 0.5 device-pixel-ratio and the software renderer:
+//
+//   SLINT_BACKEND=software SLINT_SCALE_FACTOR=0.5 \
+//     cargo run --release -p slint-viewer -- demos/home-automation/ui/frdm-mcxn947-480x320.slint
+//
+// `graphics-accelerator-available` is forced off so the software-renderer widget
+// loader (heavy Graph/HVAC/WeatherInfo widgets gated out) and the landscape page
+// layout are used.
+
+import { MainScreen } from "components/mainView/mainScreen.slint";
+import { AppState } from "appState.slint";
+import { Api } from "api.slint";
+
+export { Api }
+
+export component AppWindow inherits Window {
+    // Board logical size = 480x320 panel / 0.5 device-pixel-ratio. width > height
+    // keeps the landscape layout.
+    width: 960px;
+    height: 640px;
+
+    MainScreen {
+        door-component-loaded: false;
+        initial-door-state: open;
+    }
+
+    init => {
+        AppState.graphics-accelerator-available = false;
+    }
+}
