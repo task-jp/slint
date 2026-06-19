@@ -91,6 +91,27 @@ Index: 5 Width: 1680 Height: 1050 Refresh Rate: 59
 
 Set `SLINT_DRM_MODE` to `4` to select 1920x1080@60.
 
+## DRM Leasing
+
+This requires the `linuxkms-drm-lease` Cargo feature, which is off by default since most targets
+don't use DRM leasing.
+
+Instead of opening a card from `/dev/dri` itself, the backend can render on a pre-leased DRM device:
+a [DRM *lease*](https://www.kernel.org/doc/html/latest/gpu/drm-uapi.html#drm-leases) that exposes
+only a specific connector, CRTC and planes. This lets Slint drive one output while another DRM
+master (for example a Wayland compositor, or another application) owns the rest of the same GPU, and
+is how Slint runs as a native application under the
+[AGL drm-lease-manager](https://github.com/AGLExport/drm-lease-manager).
+
+Set the `SLINT_DRM_LEASE_FD` environment variable to the number of an already-open, inherited DRM
+lease file descriptor. When set, the backend uses that descriptor directly and skips the `/dev/dri`
+scan as well as `SLINT_DRM_OUTPUT`-based selection (a lease only contains its own connector). The
+backend takes ownership of the descriptor.
+
+This is typically used together with a launcher that creates the lease and passes the descriptor to
+the Slint process. For example, a launcher that obtained lease descriptor `7` would run the
+application with `SLINT_DRM_LEASE_FD=7`.
+
 ## Configuring the Keyboard
 
 By default the keyboard layout and model is assumed to be a US model and layout. Set the following

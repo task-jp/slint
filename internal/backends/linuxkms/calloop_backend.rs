@@ -86,6 +86,25 @@ pub struct Backend {
     drm_lease_fd: Option<Rc<OwnedFd>>,
 }
 
+// Env-var counterpart to with_drm_lease_fd, for launchers that pass an inherited lease fd.
+#[cfg(feature = "drm-lease")]
+fn drm_lease_fd_from_env() -> Option<OwnedFd> {
+    use std::os::fd::FromRawFd;
+    let value = std::env::var("SLINT_DRM_LEASE_FD").ok()?;
+    match value.trim().parse::<std::os::fd::RawFd>() {
+        Ok(raw) if raw >= 0 => {
+            // Safety: the fd is promised to be an inherited, open lease fd we take ownership of.
+            Some(unsafe { OwnedFd::from_raw_fd(raw) })
+        }
+        _ => {
+            eprintln!(
+                "slint linuxkms backend: ignoring invalid SLINT_DRM_LEASE_FD value {value:?}"
+            );
+            None
+        }
+    }
+}
+
 impl Backend {
     pub fn build(builder: BackendBuilder) -> Result<Self, PlatformError> {
         let (user_event_sender, user_event_receiver) = calloop::channel::channel();
@@ -145,7 +164,7 @@ impl Backend {
 
         // Page-flip polling requires a blocking fd, so clear O_NONBLOCK like the device opener does.
         #[cfg(feature = "drm-lease")]
-        let drm_lease_fd = match builder.drm_lease_fd {
+        let drm_lease_fd = match builder.drm_lease_fd.or_else(drm_lease_fd_from_env) {
             Some(fd) => {
                 let flags = nix::fcntl::fcntl(fd.as_fd(), nix::fcntl::FcntlArg::F_GETFL)
                     .map_err(|e| format!("Error getting DRM lease fd flags: {e}"))?;
