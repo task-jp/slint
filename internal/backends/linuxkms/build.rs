@@ -34,4 +34,11 @@ fn main() {
             feature = "unstable-wgpu-29"
         ) },
     }
+
+    // Link the AGL drm-lease-manager client library when the drm-lease-manager feature is on.
+    if std::env::var_os("CARGO_FEATURE_DRM_LEASE_MANAGER").is_some()
+        && pkg_config::probe_library("libdlmclient").is_err()
+    {
+        println!("cargo:rustc-link-lib=dylib=dlmclient");
+    }
 }

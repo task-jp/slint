@@ -30,6 +30,8 @@ renderer-software = ["i-slint-renderer-software/std", "drm", "dep:bytemuck", "de
 libseat = ["dep:libseat"]
 # Render on a pre-leased DRM device (DRM lease). Off by default.
 drm-lease = ["drm"]
+# Obtain the DRM lease from the AGL drm-lease-manager (links libdlmclient). Off by default.
+drm-lease-manager = ["drm-lease"]
 
 default = []
 
@@ -56,6 +58,7 @@ memmap2 = { version = "0.9.4", optional = true }
 
 [build-dependencies]
 cfg_aliases = { workspace = true }
+pkg-config = "0.3"
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--generate-link-to-definition"]

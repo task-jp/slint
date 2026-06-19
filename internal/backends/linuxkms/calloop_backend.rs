@@ -1,7 +1,7 @@
 // Copyright © SixtyFPS GmbH <info@slint.dev>
 // SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0
 
-// cSpell: ignore CLOEXEC GETFL NOCTTY NONBLOCK
+// cSpell: ignore CLOEXEC GETFL NOCTTY NONBLOCK dlm dlmclient
 use std::cell::RefCell;
 #[cfg(not(feature = "libseat"))]
 use std::fs::OpenOptions;
@@ -105,6 +105,38 @@ fn drm_lease_fd_from_env() -> Option<OwnedFd> {
     }
 }
 
+// Obtain the lease fd from the AGL drm-lease-manager (libdlmclient), by lease name in
+// SLINT_DRM_LEASE_NAME (e.g. "card0-HDMI-A-1").
+#[cfg(feature = "drm-lease-manager")]
+fn drm_lease_fd_from_manager() -> Option<OwnedFd> {
+    use std::os::fd::FromRawFd;
+
+    #[repr(C)]
+    struct DlmLease {
+        _opaque: [u8; 0],
+    }
+    unsafe extern "C" {
+        fn dlm_get_lease(name: *const std::os::raw::c_char) -> *mut DlmLease;
+        fn dlm_lease_fd(lease: *mut DlmLease) -> std::os::raw::c_int;
+    }
+
+    let name = std::env::var("SLINT_DRM_LEASE_NAME").ok()?;
+    let c_name = std::ffi::CString::new(name.clone()).ok()?;
+    // Safety: libdlmclient C API. The returned lease owns the fd; we deliberately never release it
+    // (and leak the handle) so the fd stays valid for the lifetime of the process.
+    let lease = unsafe { dlm_get_lease(c_name.as_ptr()) };
+    if lease.is_null() {
+        eprintln!("slint linuxkms backend: drm-lease-manager has no lease named {name:?}");
+        return None;
+    }
+    let raw = unsafe { dlm_lease_fd(lease) };
+    if raw < 0 {
+        eprintln!("slint linuxkms backend: drm-lease-manager returned no fd for lease {name:?}");
+        return None;
+    }
+    Some(unsafe { OwnedFd::from_raw_fd(raw) })
+}
+
 impl Backend {
     pub fn build(builder: BackendBuilder) -> Result<Self, PlatformError> {
         let (user_event_sender, user_event_receiver) = calloop::channel::channel();
@@ -164,7 +196,11 @@ impl Backend {
 
         // Page-flip polling requires a blocking fd, so clear O_NONBLOCK like the device opener does.
         #[cfg(feature = "drm-lease")]
-        let drm_lease_fd = match builder.drm_lease_fd.or_else(drm_lease_fd_from_env) {
+        let lease_fd = builder.drm_lease_fd.or_else(drm_lease_fd_from_env);
+        #[cfg(feature = "drm-lease-manager")]
+        let lease_fd = lease_fd.or_else(drm_lease_fd_from_manager);
+        #[cfg(feature = "drm-lease")]
+        let drm_lease_fd = match lease_fd {
             Some(fd) => {
                 let flags = nix::fcntl::fcntl(fd.as_fd(), nix::fcntl::FcntlArg::F_GETFL)
                     .map_err(|e| format!("Error getting DRM lease fd flags: {e}"))?;

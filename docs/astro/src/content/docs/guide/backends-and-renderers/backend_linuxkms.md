@@ -2,7 +2,7 @@
 title: LinuxKMS Backend
 description: LinuxKMS Backend
 ---
-<!-- cSpell: ignore linuxkms libinput libseat libudev libgbm libxkbcommon xkbcommon noseat keymap xkeyboard udevadm -->
+<!-- cSpell: ignore linuxkms libinput libseat libudev libgbm libxkbcommon xkbcommon noseat keymap xkeyboard udevadm libdlmclient dlmclient -->
 
 The LinuxKMS backend runs only on Linux and eliminates the need for a windowing system such as Wayland or X11.
 Instead it uses the following libraries and interface to render directly to the screen and react to touch, mouse,
@@ -111,6 +111,15 @@ backend takes ownership of the descriptor.
 This is typically used together with a launcher that creates the lease and passes the descriptor to
 the Slint process. For example, a launcher that obtained lease descriptor `7` would run the
 application with `SLINT_DRM_LEASE_FD=7`.
+
+### drm-lease-manager
+
+Alternatively, the backend can obtain the lease directly from the
+[AGL drm-lease-manager](https://github.com/AGLExport/drm-lease-manager) instead of receiving a file
+descriptor. This requires the `linuxkms-drm-lease-manager` Cargo feature, which links the
+`libdlmclient` client library. Set the `SLINT_DRM_LEASE_NAME` environment variable to the lease name
+managed by the daemon (for example `card0-HDMI-A-1`); the backend then requests that lease via
+`dlm_get_lease()` and renders on it. `SLINT_DRM_LEASE_FD` takes precedence if both are set.
 
 ## Configuring the Keyboard
 

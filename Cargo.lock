@@ -5259,6 +5259,7 @@ dependencies = [
  "libseat",
  "memmap2",
  "nix",
+ "pkg-config",
  "raw-window-handle",
  "xkbcommon",
 ]

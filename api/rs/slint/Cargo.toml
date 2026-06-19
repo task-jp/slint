@@ -217,6 +217,10 @@ backend-linuxkms-noseat = ["i-slint-backend-selector/backend-linuxkms-noseat", "
 ## Allow the LinuxKMS backend to render on a pre-leased DRM device (DRM lease). Off by default.
 linuxkms-drm-lease = ["i-slint-backend-selector/linuxkms-drm-lease"]
 
+## Like `linuxkms-drm-lease`, but the LinuxKMS backend obtains the lease from the AGL
+## drm-lease-manager (links libdlmclient). Off by default.
+linuxkms-drm-lease-manager = ["i-slint-backend-selector/linuxkms-drm-lease-manager"]
+
 ## Use the backend based on the [android-activity](https://docs.rs/android-activity) crate. (Using it's native activity feature)
 backend-android-activity-06 = [
   "i-slint-backend-android-activity/native-activity",
