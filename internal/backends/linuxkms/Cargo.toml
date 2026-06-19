@@ -28,6 +28,8 @@ renderer-femtovg = ["i-slint-renderer-femtovg/opengl", "drm", "gbm", "glutin", "
 renderer-femtovg-wgpu = ["i-slint-renderer-femtovg/wgpu", "drm"]
 renderer-software = ["i-slint-renderer-software/std", "drm", "dep:bytemuck", "dep:memmap2"]
 libseat = ["dep:libseat"]
+# Render on a pre-leased DRM device (DRM lease). Off by default.
+drm-lease = ["drm"]
 
 default = []
 

@@ -12,8 +12,46 @@ mod fullscreenwindowadapter;
 use std::os::fd::OwnedFd;
 
 #[cfg(target_os = "linux")]
-type DeviceOpener<'a> = dyn Fn(&std::path::Path) -> Result<std::rc::Rc<OwnedFd>, i_slint_core::platform::PlatformError>
-    + 'a;
+pub(crate) struct DeviceOpener<'a> {
+    opener: Box<
+        dyn Fn(
+                &std::path::Path,
+            ) -> Result<std::rc::Rc<OwnedFd>, i_slint_core::platform::PlatformError>
+            + 'a,
+    >,
+    #[cfg(feature = "drm-lease")]
+    lease_fd: Option<std::rc::Rc<OwnedFd>>,
+}
+
+#[cfg(target_os = "linux")]
+impl<'a> DeviceOpener<'a> {
+    pub(crate) fn new(
+        opener: impl Fn(
+            &std::path::Path,
+        ) -> Result<std::rc::Rc<OwnedFd>, i_slint_core::platform::PlatformError>
+        + 'a,
+        #[cfg(feature = "drm-lease")] lease_fd: Option<std::rc::Rc<OwnedFd>>,
+    ) -> Self {
+        Self {
+            opener: Box::new(opener),
+            #[cfg(feature = "drm-lease")]
+            lease_fd,
+        }
+    }
+
+    #[cfg_attr(not(feature = "drm"), allow(dead_code))]
+    pub(crate) fn open(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<std::rc::Rc<OwnedFd>, i_slint_core::platform::PlatformError> {
+        (self.opener)(path)
+    }
+
+    #[cfg(feature = "drm-lease")]
+    pub(crate) fn lease_fd(&self) -> Option<std::rc::Rc<OwnedFd>> {
+        self.lease_fd.clone()
+    }
+}
 
 #[cfg(all(target_os = "linux", feature = "drm"))]
 mod drmoutput;
@@ -102,6 +140,8 @@ pub struct BackendBuilder {
     pub(crate) requested_graphics_api: Option<i_slint_core::graphics::RequestedGraphicsAPI>,
     #[cfg(target_os = "linux")]
     pub(crate) libinput_event_hook: Option<Box<dyn Fn(&input::Event) -> bool>>,
+    #[cfg(all(target_os = "linux", feature = "drm-lease"))]
+    pub(crate) drm_lease_fd: Option<OwnedFd>,
 }
 
 impl BackendBuilder {
@@ -124,6 +164,14 @@ impl BackendBuilder {
         event_hook: Box<dyn Fn(&input::Event) -> bool>,
     ) -> Self {
         self.libinput_event_hook = Some(event_hook);
+        self
+    }
+
+    /// Render on a pre-leased DRM device (`fd`, a DRM lease) instead of opening a card from
+    /// `/dev/dri`.
+    #[cfg(all(target_os = "linux", feature = "drm-lease"))]
+    pub fn with_drm_lease_fd(mut self, fd: OwnedFd) -> Self {
+        self.drm_lease_fd = Some(fd);
         self
     }
 

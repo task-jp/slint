@@ -5,9 +5,11 @@
 use std::cell::RefCell;
 #[cfg(not(feature = "libseat"))]
 use std::fs::OpenOptions;
+#[cfg(any(feature = "libseat", feature = "drm-lease"))]
+use std::os::fd::AsFd;
 use std::os::fd::OwnedFd;
 #[cfg(feature = "libseat")]
-use std::os::fd::{AsFd, AsRawFd, FromRawFd};
+use std::os::fd::{AsRawFd, FromRawFd};
 #[cfg(not(feature = "libseat"))]
 use std::os::unix::fs::OpenOptionsExt;
 use std::rc::Rc;
@@ -80,6 +82,8 @@ pub struct Backend {
     sel_clipboard: RefCell<Option<String>>,
     clipboard: RefCell<Option<String>>,
     libinput_event_hook: Option<Box<dyn Fn(&::input::Event) -> bool>>,
+    #[cfg(feature = "drm-lease")]
+    drm_lease_fd: Option<Rc<OwnedFd>>,
 }
 
 impl Backend {
@@ -139,6 +143,21 @@ impl Backend {
             }
         }
 
+        // Page-flip polling requires a blocking fd, so clear O_NONBLOCK like the device opener does.
+        #[cfg(feature = "drm-lease")]
+        let drm_lease_fd = match builder.drm_lease_fd {
+            Some(fd) => {
+                let flags = nix::fcntl::fcntl(fd.as_fd(), nix::fcntl::FcntlArg::F_GETFL)
+                    .map_err(|e| format!("Error getting DRM lease fd flags: {e}"))?;
+                let mut flags = nix::fcntl::OFlag::from_bits_retain(flags);
+                flags.remove(nix::fcntl::OFlag::O_NONBLOCK);
+                nix::fcntl::fcntl(fd.as_fd(), nix::fcntl::FcntlArg::F_SETFL(flags))
+                    .map_err(|e| format!("Error making DRM lease fd blocking: {e}"))?;
+                Some(Rc::new(fd))
+            }
+            None => None,
+        };
+
         Ok(Backend {
             #[cfg(feature = "libseat")]
             seat: Rc::new(RefCell::new(seat)),
@@ -150,6 +169,8 @@ impl Backend {
             sel_clipboard: Default::default(),
             clipboard: Default::default(),
             libinput_event_hook: builder.libinput_event_hook,
+            #[cfg(feature = "drm-lease")]
+            drm_lease_fd,
         })
     }
 }
@@ -201,8 +222,14 @@ impl i_slint_core::platform::Platform for Backend {
                     .map_err(|e| format!("Failed to parse SLINT_KMS_ROTATION: {e}"))
             })?;
 
+        let device_opener = crate::DeviceOpener::new(
+            device_accessor,
+            #[cfg(feature = "drm-lease")]
+            self.drm_lease_fd.clone(),
+        );
+
         let renderer =
-            (self.renderer_factory)(&device_accessor, self.requested_graphics_api.as_ref())?;
+            (self.renderer_factory)(&device_opener, self.requested_graphics_api.as_ref())?;
         let adapter = FullscreenWindowAdapter::new(renderer, rotation)?;
 
         *self.window.borrow_mut() = Some(adapter.clone());

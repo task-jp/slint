@@ -22,6 +22,7 @@ backend-winit-x11 = ["i-slint-backend-winit/x11"]
 backend-winit-wayland = ["i-slint-backend-winit/wayland"]
 backend-linuxkms = ["i-slint-backend-linuxkms/libseat"]
 backend-linuxkms-noseat = ["i-slint-backend-linuxkms"]
+linuxkms-drm-lease = ["i-slint-backend-linuxkms?/drm-lease"]
 backend-qt = ["i-slint-backend-qt/enable"]
 backend-testing = ["i-slint-backend-testing/internal"]
 
