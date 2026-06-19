@@ -142,6 +142,7 @@ depfile
 deque
 devcode
 devenv
+devicetree
 dfaure
 dgettext
 directx
@@ -149,6 +150,7 @@ dists
 divp
 divq
 divr
+dmamux
 DLOPEN
 docsrs
 docstrings
@@ -166,6 +168,7 @@ driverlib
 droparea
 dropevent
 DSHIELD
+dslint
 dsym
 dsymutil
 dustygold
@@ -173,6 +176,7 @@ Dxgi
 DYLD
 eabi
 eabihf
+edma
 Eeprom
 eiusmod
 ELCDIF
@@ -235,6 +239,7 @@ fooo
 FOURCC
 fract
 framebuffers
+frdm
 freetype
 frontends
 frontmatter
@@ -261,8 +266,10 @@ Grotesk
 gstreamer
 GWLP
 Hani
+hardabi
 hdmipi
 heapless
+heaprobe
 hidpi
 highp
 HINSTANCE
@@ -393,6 +400,7 @@ maturin
 mcp
 mcus
 MCUX
+mcxn
 mdbook
 memsize
 menuconfig
@@ -450,6 +458,7 @@ NUMS
 Nunito
 NVIC
 nvim
+nxpdebugmbox
 O_WRONLY
 objc
 objfile
@@ -498,6 +507,7 @@ pyfunction
 pymethods
 pymodule
 pyobject
+pyocd
 pypi
 pypiserver
 pyproject
@@ -584,6 +594,7 @@ spinboxes
 SPIRAM
 SPRINTF
 Spyrosoft
+sramx
 srcroot
 SRCS
 SRGBA
@@ -621,6 +632,7 @@ Swapchain
 swapusage
 swipegesturehandler
 Sysclk
+sysconf
 sysexit
 sysinfo
 systemfonts
@@ -660,6 +672,7 @@ tungstenite
 typedoc
 typeregister
 Tzimabazafi
+tzname
 uart
 udisksctl
 udivdi
@@ -722,6 +735,7 @@ wldisplay
 wlsurface
 WNDCLASS
 wordlike
+workqueue
 WQXGA
 writeback
 WRONLY
