@@ -11,92 +11,47 @@ export enum NavIconKind {
 export component BulbIcon inherits Rectangle {
     in property <color> icon-color: LightsTheme.white;
 
-    Path {
-        x: 7px;
-        y: 5px;
-        width: 50px;
-        height: 54px;
-        commands: "M 25 0 C 10 0 0 12 0 27 C 0 37 6 44 14 50 L 14 56 L 36 56 L 36 50 C 44 44 50 37 50 27 C 50 12 40 0 25 0";
-        stroke: root.icon-color;
-        stroke-width: 4px;
-        fill: transparent;
-    }
-
-    Rectangle {
-        x: 21px;
-        y: 65px;
-        width: 22px;
-        height: 4px;
-        border-radius: 2px;
-        background: root.icon-color;
-    }
-
-    Rectangle {
-        x: 25px;
-        y: 74px;
-        width: 14px;
-        height: 3px;
-        border-radius: 2px;
-        background: root.icon-color;
-        opacity: 0.9;
+    Image {
+        x: 2px;
+        y: 2px;
+        width: 60px;
+        height: 60px;
+        source: @image-url("../../images/primer-icons/light-bulb.svg");
+        colorize: root.icon-color;
     }
 }
 
 export component ShieldIcon inherits Rectangle {
     in property <color> icon-color: LightsTheme.muted-text;
 
-    Path {
-        x: 6px;
-        y: 2px;
-        width: 58px;
-        height: 68px;
-        commands: "M 29 0 L 56 11 L 56 29 C 56 47 45 60 29 68 C 13 60 2 47 2 29 L 2 11 Z";
-        stroke: root.icon-color;
-        stroke-width: 4px;
-        fill: transparent;
+    Image {
+        x: 5px;
+        y: 3px;
+        width: 60px;
+        height: 60px;
+        source: @image-url("../../images/primer-icons/shield.svg");
+        colorize: root.icon-color;
     }
 }
 
 export component MediaIcon inherits Rectangle {
     in property <color> icon-color: LightsTheme.muted-text;
 
-    Rectangle {
-        x: 4px;
-        y: 5px;
-        width: 56px;
-        height: 43px;
-        border-radius: 5px;
-        border-width: 4px;
-        border-color: root.icon-color;
-        background: transparent;
-    }
-
-    Rectangle {
-        x: 13px;
-        y: 15px;
-        width: 7px;
-        height: 7px;
-        border-radius: 4px;
-        background: root.icon-color;
-        opacity: 0.85;
-    }
-
-    Rectangle {
-        x: 27px;
-        y: 16px;
-        width: 20px;
-        height: 4px;
-        border-radius: 2px;
-        background: root.icon-color;
-        opacity: 0.85;
+    Image {
+        x: 3px;
+        y: 2px;
+        width: 58px;
+        height: 50px;
+        source: @image-url("../../images/primer-icons/browser.svg");
+        colorize: root.icon-color;
     }
 
     Image {
-        x: 28px;
-        y: 25px;
+        x: 27px;
+        y: 24px;
         width: 17px;
         height: 17px;
-        source: @image-url("../../images/play.svg");
+        source: @image-url("../../images/primer-icons/play.svg");
         colorize: root.icon-color;
     }
 }
@@ -104,15 +59,13 @@ export component MediaIcon inherits Rectangle {
 export component ChevronIcon inherits Rectangle {
     in property <color> icon-color: LightsTheme.muted-text;
 
-    Path {
-        x: 6px;
-        y: 4px;
-        width: 24px;
-        height: 36px;
-        commands: "M 2 2 L 17 18 L 2 34";
-        stroke: root.icon-color;
-        stroke-width: 4px;
-        fill: transparent;
+    Image {
+        x: -14px;
+        y: -5px;
+        width: 58px;
+        height: 52px;
+        source: @image-url("../../images/primer-icons/chevron-right.svg");
+        colorize: root.icon-color;
     }
 }
 
