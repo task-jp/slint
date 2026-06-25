@@ -10,153 +10,201 @@ export component ClimateHeroCard inherits GlassPanel {
     outline: LightsTheme.panel-border;
 
     ShadowText {
-        x: 44px;
-        y: 45px;
+        x: 35px;
+        y: 36px;
         width: 390px;
         height: 70px;
         label: "Living Room";
-        size: 51px;
+        size: 50px;
         weight: FontWeight.bold;
-    }
-
-    HorizontalLayout {
-        x: 44px;
-        y: 124px;
-        width: 360px;
-        height: 45px;
-        spacing: 12px;
-
-        Text {
-            text: "Cooling";
-            font-family: AppState.default-font-family;
-            font-size: 36px;
-            color: LightsTheme.muted-text;
-            vertical-alignment: center;
-        }
-
-        Text {
-            text: "72 F";
-            font-family: AppState.default-font-family;
-            font-size: 36px;
-            font-weight: FontWeight.bold;
-            color: LightsTheme.cool;
-            vertical-alignment: center;
-        }
-    }
-
-    Rectangle {
-        x: 452px;
-        y: 38px;
-        width: 1px;
-        height: 124px;
-        background: #65518466;
-    }
-
-    Rectangle {
-        x: 560px;
-        y: 36px;
-        width: 145px;
-        height: 145px;
-        border-radius: self.width / 2;
-        background: #82d9ff18;
-        border-width: 2px;
-        border-color: #82d9ff77;
-    }
-
-    Rectangle {
-        x: 579px;
-        y: 55px;
-        width: 107px;
-        height: 107px;
-        border-radius: self.width / 2;
-        background: #080810aa;
-        border-width: 2px;
-        border-color: #ffffff20;
     }
 
     ShadowText {
-        x: 595px;
-        y: 78px;
-        width: 76px;
-        height: 48px;
-        label: "72";
-        size: 44px;
+        x: 35px;
+        y: 98px;
+        width: 290px;
+        height: 90px;
+        label: "21.5°";
+        size: 70px;
         weight: FontWeight.bold;
-        text-color: LightsTheme.white;
+        text-color: LightsTheme.purple;
+    }
+
+    HorizontalLayout {
+        x: 35px;
+        y: 192px;
+        width: 260px;
+        height: 38px;
+        spacing: 9px;
+
+        Text {
+            text: "Heating to";
+            font-family: AppState.default-font-family;
+            font-size: 30px;
+            font-weight: FontWeight.medium;
+            color: LightsTheme.muted-text;
+        }
+
+        Text {
+            text: "22°";
+            font-family: AppState.default-font-family;
+            font-size: 30px;
+            font-weight: FontWeight.bold;
+            color: LightsTheme.purple;
+        }
+    }
+
+    Rectangle {
+        x: 418px;
+        y: 35px;
+        width: 1px;
+        height: 176px;
+        background: #65518466;
+    }
+
+    Image {
+        x: 520px;
+        y: 43px;
+        width: 168px;
+        height: 168px;
+        source: @image-url("../../images/primer-icons/meter.svg");
+        colorize: LightsTheme.purple;
+    }
+
+    Rectangle {
+        x: 657px;
+        y: 60px;
+        width: 14px;
+        height: 14px;
+        border-radius: 7px;
+        background: LightsTheme.white;
     }
 
     Text {
-        x: 623px;
-        y: 124px;
-        width: 34px;
+        x: 532px;
+        y: 208px;
+        width: 40px;
         height: 22px;
-        text: "F";
+        text: "16";
         font-family: AppState.default-font-family;
-        font-size: 19px;
+        font-size: 21px;
         font-weight: FontWeight.bold;
-        color: LightsTheme.cool;
+        color: LightsTheme.muted-text;
+        horizontal-alignment: center;
+    }
+
+    Text {
+        x: 646px;
+        y: 208px;
+        width: 40px;
+        height: 22px;
+        text: "28";
+        font-family: AppState.default-font-family;
+        font-size: 21px;
+        font-weight: FontWeight.bold;
+        color: LightsTheme.muted-text;
         horizontal-alignment: center;
     }
 
     Rectangle {
-        x: 31px;
-        y: 195px;
-        width: 716px;
-        height: 72px;
+        x: 29px;
+        y: 239px;
+        width: 720px;
+        height: 65px;
         border-radius: 14px;
         border-width: 2px;
         border-color: LightsTheme.panel-border-soft;
         background: #151020a8;
 
         Rectangle {
-            x: 88px;
-            y: 22px;
-            width: 536px;
-            height: 41px;
-            border-radius: 20px;
-            background: #ffffff12;
-            border-width: 1px;
-            border-color: #ffffff22;
-            clip: true;
-
-            Rectangle {
-                x: 0px;
-                y: 0px;
-                width: 362px;
-                height: 100%;
-                border-radius: parent.border-radius;
-                background: @linear-gradient(90deg, LightsTheme.cool 0%, #eadbff 100%);
-            }
-
-            Rectangle {
-                x: 337px;
-                y: -3px;
-                width: 47px;
-                height: 47px;
-                border-radius: self.width / 2;
-                background: LightsTheme.white;
-            }
+            x: 90px;
+            width: 1px;
+            height: 100%;
+            background: #6b5b8854;
         }
 
-        Image {
-            x: 22px;
-            y: 19px;
-            width: 28px;
-            height: 28px;
-            source: @image-url("../../images/primer-icons/flame.svg");
-            colorize: LightsTheme.cool;
+        Rectangle {
+            x: 265px;
+            width: 1px;
+            height: 100%;
+            background: #6b5b8854;
+        }
+
+        Rectangle {
+            x: 363px;
+            width: 1px;
+            height: 100%;
+            background: #6b5b8854;
+        }
+
+        Rectangle {
+            x: 379px;
+            y: 11px;
+            width: 328px;
+            height: 43px;
+            border-radius: 21px;
+            background: #ffffff0d;
+            border-width: 1px;
+            border-color: #ffffff22;
+
+            Rectangle {
+                x: 111px;
+                y: 0px;
+                width: 112px;
+                height: 43px;
+                border-radius: 21px;
+                background: LightsTheme.purple;
+            }
         }
 
         Text {
-            x: 646px;
-            y: 18px;
-            width: 54px;
-            height: 40px;
-            text: "68";
+            x: 0px;
+            y: 6px;
+            width: 90px;
+            height: 51px;
+            text: "−";
             font-family: AppState.default-font-family;
-            font-size: 28px;
-            font-weight: FontWeight.bold;
+            font-size: 40px;
             color: LightsTheme.muted-text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        ShadowText {
+            x: 96px;
+            y: 3px;
+            width: 164px;
+            height: 56px;
+            label: "22°";
+            size: 49px;
+            weight: FontWeight.bold;
+            text-color: LightsTheme.purple;
+        }
+
+        Text {
+            x: 269px;
+            y: 6px;
+            width: 90px;
+            height: 51px;
+            text: "+";
+            font-family: AppState.default-font-family;
+            font-size: 40px;
+            color: LightsTheme.muted-text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        for item[index] in ["Heat", "Auto", "Off"] : Text {
+            x: 379px + index * 109px;
+            y: 18px;
+            width: 109px;
+            height: 30px;
+            text: item;
+            font-family: AppState.default-font-family;
+            font-size: 25px;
+            font-weight: index == 1 ? FontWeight.bold : FontWeight.normal;
+            color: index == 1 ? #080810 : LightsTheme.muted-text;
+            horizontal-alignment: center;
         }
     }
 }

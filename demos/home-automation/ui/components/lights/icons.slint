@@ -25,11 +25,11 @@ export component ShieldIcon inherits Rectangle {
     in property <color> icon-color: LightsTheme.muted-text;
 
     Image {
-        x: 5px;
+        x: 3px;
         y: 3px;
         width: 60px;
         height: 60px;
-        source: @image-url("../../images/primer-icons/shield.svg");
+        source: @image-url("../../images/primer-icons/shield-check.svg");
         colorize: root.icon-color;
     }
 }
@@ -38,20 +38,11 @@ export component ClimateIcon inherits Rectangle {
     in property <color> icon-color: LightsTheme.muted-text;
 
     Image {
-        x: 3px;
-        y: 0px;
-        width: 58px;
-        height: 58px;
+        x: 2px;
+        y: 1px;
+        width: 62px;
+        height: 62px;
         source: @image-url("../../images/primer-icons/meter.svg");
-        colorize: root.icon-color;
-    }
-
-    Image {
-        x: 26px;
-        y: 28px;
-        width: 17px;
-        height: 17px;
-        source: @image-url("../../images/primer-icons/flame.svg");
         colorize: root.icon-color;
     }
 }
