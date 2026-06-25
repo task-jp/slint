@@ -4,6 +4,8 @@ import { LightsTheme } from "lightsTheme.slint";
 import { NavIconButton, NavIconKind } from "icons.slint";
 
 export component LightsSidebar inherits Rectangle {
+    in-out property <int> active-page: 0;
+
     border-radius: 14px;
     border-width: 2px;
     border-color: #5b497088;
@@ -11,7 +13,7 @@ export component LightsSidebar inherits Rectangle {
 
     Rectangle {
         x: 4px;
-        y: 52px;
+        y: active-page == 0 ? 52px : active-page == 1 ? 211px : 348px;
         width: root.width - 8px;
         height: 138px;
         border-radius: 13px;
@@ -23,7 +25,10 @@ export component LightsSidebar inherits Rectangle {
         y: 50px;
         width: 100%;
         kind: NavIconKind.bulb;
-        selected: true;
+        selected: root.active-page == 0;
+        clicked => {
+            root.active-page = 0;
+        }
     }
 
     NavIconButton {
@@ -31,12 +36,20 @@ export component LightsSidebar inherits Rectangle {
         y: 211px;
         width: 100%;
         kind: NavIconKind.shield;
+        selected: root.active-page == 1;
+        clicked => {
+            root.active-page = 1;
+        }
     }
 
     NavIconButton {
         x: 0px;
         y: 348px;
         width: 100%;
-        kind: NavIconKind.media;
+        kind: NavIconKind.climate;
+        selected: root.active-page == 2;
+        clicked => {
+            root.active-page = 2;
+        }
     }
 }

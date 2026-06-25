@@ -4,12 +4,14 @@ import { Palette as StdPalette } from "std-widgets.slint";
 import { AppState } from "../../appState.slint";
 import { LightsTheme } from "lightsTheme.slint";
 import { LightsSidebar } from "sidebar.slint";
-import { HeroLightCard } from "heroLightCard.slint";
-import { RoomCard } from "roomCard.slint";
+import { LightsPage } from "lightsPage.slint";
+import { SecurityPage } from "securityPage.slint";
+import { ClimatePage } from "climatePage.slint";
 import { ShadowText } from "shadowText.slint";
 
 export component LightsScreen inherits Rectangle {
     in-out property <float> brightness: 82;
+    in-out property <int> active-page: 0;
 
     width: 100%;
     height: 100%;
@@ -34,6 +36,7 @@ export component LightsScreen inherits Rectangle {
         y: 28px;
         width: 104px;
         height: 568px;
+        active-page <=> root.active-page;
     }
 
     ShadowText {
@@ -41,7 +44,7 @@ export component LightsScreen inherits Rectangle {
         y: 37px;
         width: 260px;
         height: 60px;
-        label: "Lights";
+        label: active-page == 0 ? "Lights" : active-page == 1 ? "Security" : "Climate";
         size: 51px;
         weight: FontWeight.bold;
     }
@@ -57,30 +60,25 @@ export component LightsScreen inherits Rectangle {
         text-color: #c9bde4;
     }
 
-    HeroLightCard {
+    if active-page == 0 : LightsPage {
         x: 158px;
         y: 106px;
         width: 780px;
-        height: 289px;
+        height: 491px;
         brightness <=> root.brightness;
     }
 
-    RoomCard {
+    if active-page == 1 : SecurityPage {
         x: 158px;
-        y: 416px;
-        width: 375px;
-        height: 181px;
-        room-name: "Back Porch";
-        state-label: "70%";
-        active: true;
+        y: 106px;
+        width: 780px;
+        height: 491px;
     }
 
-    RoomCard {
-        x: 548px;
-        y: 416px;
-        width: 390px;
-        height: 181px;
-        room-name: "Yard";
-        state-label: "Off";
+    if active-page == 2 : ClimatePage {
+        x: 158px;
+        y: 106px;
+        width: 780px;
+        height: 491px;
     }
 }

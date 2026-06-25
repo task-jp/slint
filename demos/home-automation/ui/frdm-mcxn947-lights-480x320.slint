@@ -8,10 +8,14 @@ import { LightsScreen } from "components/lights/lightsScreen.slint";
 import { AppState } from "appState.slint";
 
 export component AppWindow inherits Window {
+    in-out property <int> active-page: 0;
+
     width: 960px;
     height: 640px;
 
-    LightsScreen { }
+    LightsScreen {
+        active-page <=> root.active-page;
+    }
 
     init => {
         AppState.graphics-accelerator-available = true;

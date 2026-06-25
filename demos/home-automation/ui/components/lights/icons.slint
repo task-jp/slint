@@ -5,7 +5,7 @@ import { LightsTheme } from "lightsTheme.slint";
 export enum NavIconKind {
     bulb,
     shield,
-    media,
+    climate,
 }
 
 export component BulbIcon inherits Rectangle {
@@ -34,24 +34,24 @@ export component ShieldIcon inherits Rectangle {
     }
 }
 
-export component MediaIcon inherits Rectangle {
+export component ClimateIcon inherits Rectangle {
     in property <color> icon-color: LightsTheme.muted-text;
 
     Image {
         x: 3px;
-        y: 2px;
+        y: 0px;
         width: 58px;
-        height: 50px;
-        source: @image-url("../../images/primer-icons/browser.svg");
+        height: 58px;
+        source: @image-url("../../images/primer-icons/meter.svg");
         colorize: root.icon-color;
     }
 
     Image {
-        x: 27px;
-        y: 24px;
+        x: 26px;
+        y: 28px;
         width: 17px;
         height: 17px;
-        source: @image-url("../../images/primer-icons/play.svg");
+        source: @image-url("../../images/primer-icons/flame.svg");
         colorize: root.icon-color;
     }
 }
@@ -72,6 +72,7 @@ export component ChevronIcon inherits Rectangle {
 export component NavIconButton inherits Rectangle {
     in property <NavIconKind> kind: NavIconKind.bulb;
     in property <bool> selected: false;
+    callback clicked;
 
     property <color> icon-color: selected ? LightsTheme.white : LightsTheme.muted-text;
 
@@ -106,7 +107,7 @@ export component NavIconButton inherits Rectangle {
         icon-color: root.icon-color;
     }
 
-    if root.kind == NavIconKind.media : MediaIcon {
+    if root.kind == NavIconKind.climate : ClimateIcon {
         x: 20px;
         y: 39px;
         width: 64px;
@@ -121,5 +122,12 @@ export component NavIconButton inherits Rectangle {
         height: self.width;
         border-radius: self.width / 2;
         background: LightsTheme.purple;
+    }
+
+    TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => {
+            root.clicked();
+        }
     }
 }
