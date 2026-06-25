@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: MIT
+
+// Preview of the lights concept at the same logical resolution as
+// frdm-mcxn947-480x320.slint: 960x640 logical pixels for a 480x320 panel at
+// 0.5 device-pixel-ratio.
+
+import { LightsScreen } from "components/lights/lightsScreen.slint";
+import { AppState } from "appState.slint";
+
+export component AppWindow inherits Window {
+    width: 960px;
+    height: 640px;
+
+    LightsScreen { }
+
+    init => {
+        AppState.graphics-accelerator-available = true;
+    }
+}

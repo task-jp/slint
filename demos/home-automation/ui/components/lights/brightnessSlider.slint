@@ -1,0 +1,84 @@
+// SPDX-License-Identifier: MIT
+
+import { LightsTheme } from "lightsTheme.slint";
+import { AppState } from "../../appState.slint";
+
+export component BrightnessSlider inherits Rectangle {
+    in-out property <float> value: 82;
+    property <length> icon-section-width: 72px;
+    property <length> track-x: 88px;
+    property <length> track-width: 600px;
+    property <length> knob-size: 47px;
+
+    border-radius: 14px;
+    border-width: 2px;
+    border-color: LightsTheme.panel-border-soft;
+    background: #151020a8;
+
+    Rectangle {
+        width: icon-section-width;
+        height: 100%;
+        border-radius: root.border-radius;
+        background: #ffffff03;
+    }
+
+    Rectangle {
+        x: icon-section-width;
+        width: 1px;
+        height: 100%;
+        background: #6b5b8854;
+    }
+
+    Image {
+        x: 22px;
+        y: 19px;
+        width: 28px;
+        height: 28px;
+        source: @image-url("../../images/brightness.svg");
+        colorize: LightsTheme.muted-text;
+    }
+
+    track := Rectangle {
+        x: root.track-x;
+        width: root.track-width;
+        height: 41px;
+        border-radius: 20px;
+        border-width: 1px;
+        border-color: #ffffff22;
+        background: #ffffff12;
+        clip: true;
+
+        Rectangle {
+            x: 0px;
+            width: parent.width * root.value / 100;
+            height: 100%;
+            border-radius: parent.border-radius;
+            background: LightsTheme.slider-fill;
+        }
+
+        Rectangle {
+            x: parent.width * root.value / 100 - root.knob-size / 2;
+            y: -3px;
+            width: root.knob-size;
+            height: root.knob-size;
+            border-radius: self.width / 2;
+            background: LightsTheme.white;
+        }
+    }
+
+    TouchArea {
+        x: root.track-x;
+        y: 8px;
+        width: root.track-width;
+        height: 58px;
+        mouse-cursor: MouseCursor.pointer;
+
+        clicked => {
+            root.value = Math.clamp(self.mouse-x / self.width * 100, 0, 100);
+        }
+
+        moved => {
+            root.value = Math.clamp(self.mouse-x / self.width * 100, 0, 100);
+        }
+    }
+}

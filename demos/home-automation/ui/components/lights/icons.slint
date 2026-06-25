@@ -1,0 +1,172 @@
+// SPDX-License-Identifier: MIT
+
+import { LightsTheme } from "lightsTheme.slint";
+
+export enum NavIconKind {
+    bulb,
+    shield,
+    media,
+}
+
+export component BulbIcon inherits Rectangle {
+    in property <color> icon-color: LightsTheme.white;
+
+    Path {
+        x: 7px;
+        y: 5px;
+        width: 50px;
+        height: 54px;
+        commands: "M 25 0 C 10 0 0 12 0 27 C 0 37 6 44 14 50 L 14 56 L 36 56 L 36 50 C 44 44 50 37 50 27 C 50 12 40 0 25 0";
+        stroke: root.icon-color;
+        stroke-width: 4px;
+        fill: transparent;
+    }
+
+    Rectangle {
+        x: 21px;
+        y: 65px;
+        width: 22px;
+        height: 4px;
+        border-radius: 2px;
+        background: root.icon-color;
+    }
+
+    Rectangle {
+        x: 25px;
+        y: 74px;
+        width: 14px;
+        height: 3px;
+        border-radius: 2px;
+        background: root.icon-color;
+        opacity: 0.9;
+    }
+}
+
+export component ShieldIcon inherits Rectangle {
+    in property <color> icon-color: LightsTheme.muted-text;
+
+    Path {
+        x: 6px;
+        y: 2px;
+        width: 58px;
+        height: 68px;
+        commands: "M 29 0 L 56 11 L 56 29 C 56 47 45 60 29 68 C 13 60 2 47 2 29 L 2 11 Z";
+        stroke: root.icon-color;
+        stroke-width: 4px;
+        fill: transparent;
+    }
+}
+
+export component MediaIcon inherits Rectangle {
+    in property <color> icon-color: LightsTheme.muted-text;
+
+    Rectangle {
+        x: 4px;
+        y: 5px;
+        width: 56px;
+        height: 43px;
+        border-radius: 5px;
+        border-width: 4px;
+        border-color: root.icon-color;
+        background: transparent;
+    }
+
+    Rectangle {
+        x: 13px;
+        y: 15px;
+        width: 7px;
+        height: 7px;
+        border-radius: 4px;
+        background: root.icon-color;
+        opacity: 0.85;
+    }
+
+    Rectangle {
+        x: 27px;
+        y: 16px;
+        width: 20px;
+        height: 4px;
+        border-radius: 2px;
+        background: root.icon-color;
+        opacity: 0.85;
+    }
+
+    Image {
+        x: 28px;
+        y: 25px;
+        width: 17px;
+        height: 17px;
+        source: @image-url("../../images/play.svg");
+        colorize: root.icon-color;
+    }
+}
+
+export component ChevronIcon inherits Rectangle {
+    in property <color> icon-color: LightsTheme.muted-text;
+
+    Path {
+        x: 6px;
+        y: 4px;
+        width: 24px;
+        height: 36px;
+        commands: "M 2 2 L 17 18 L 2 34";
+        stroke: root.icon-color;
+        stroke-width: 4px;
+        fill: transparent;
+    }
+}
+
+export component NavIconButton inherits Rectangle {
+    in property <NavIconKind> kind: NavIconKind.bulb;
+    in property <bool> selected: false;
+
+    property <color> icon-color: selected ? LightsTheme.white : LightsTheme.muted-text;
+
+    height: 138px;
+    border-radius: 13px;
+    background: selected ? LightsTheme.selected-nav-background : transparent;
+
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: selected ? 5px : 0px;
+        height: 137px;
+        border-radius: 3px;
+        background: LightsTheme.purple;
+        drop-shadow-blur: selected ? 12px : 0px;
+        drop-shadow-color: LightsTheme.purple-glow;
+    }
+
+    if root.kind == NavIconKind.bulb : BulbIcon {
+        x: 21px;
+        y: 31px;
+        width: 64px;
+        height: 82px;
+        icon-color: root.icon-color;
+    }
+
+    if root.kind == NavIconKind.shield : ShieldIcon {
+        x: 17px;
+        y: 29px;
+        width: 70px;
+        height: 74px;
+        icon-color: root.icon-color;
+    }
+
+    if root.kind == NavIconKind.media : MediaIcon {
+        x: 20px;
+        y: 39px;
+        width: 64px;
+        height: 56px;
+        icon-color: root.icon-color;
+    }
+
+    Rectangle {
+        x: 47px;
+        y: 105px;
+        width: root.selected ? 10px : 0px;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: LightsTheme.purple;
+    }
+}

@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: MIT
+
+import { LightsTheme } from "lightsTheme.slint";
+import { NavIconButton, NavIconKind } from "icons.slint";
+
+export component LightsSidebar inherits Rectangle {
+    border-radius: 14px;
+    border-width: 2px;
+    border-color: #5b497088;
+    background: LightsTheme.nav-background;
+
+    Rectangle {
+        x: 4px;
+        y: 52px;
+        width: root.width - 8px;
+        height: 138px;
+        border-radius: 13px;
+        background: #583b8148;
+    }
+
+    NavIconButton {
+        x: 0px;
+        y: 50px;
+        width: 100%;
+        kind: NavIconKind.bulb;
+        selected: true;
+    }
+
+    NavIconButton {
+        x: 0px;
+        y: 211px;
+        width: 100%;
+        kind: NavIconKind.shield;
+    }
+
+    NavIconButton {
+        x: 0px;
+        y: 348px;
+        width: 100%;
+        kind: NavIconKind.media;
+    }
+}
