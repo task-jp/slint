@@ -7,6 +7,13 @@ if(NOT BOARD)
     message(FATAL_ERROR "No BOARD option specified")
 endif()
 
+# Slint UI entry point to build, relative to ../ui, and its window scale
+# factor. Each board branch below sets its own defaults; override with
+# -DSLINT_HOME_AUTOMATION_UI=... / -DSLINT_ZEPHYR_SCALE_FACTOR=... to try a
+# different UI or scale on a given board.
+set(SLINT_HOME_AUTOMATION_UI_DEFAULT "demo-sw-renderer.slint")
+set(SLINT_ZEPHYR_SCALE_FACTOR_DEFAULT "")
+
 if(BOARD STREQUAL "native_sim/native/64")
     set(Rust_CARGO_TARGET "x86_64-unknown-linux-gnu")
     set(SLINT_LIBRARY_CARGO_FLAGS "-Zbuild-std=core,alloc")
@@ -51,6 +58,7 @@ set(SLINT_FEATURE_FREESTANDING ON CACHE BOOL "" FORCE)
 set(SLINT_FEATURE_RENDERER_SOFTWARE ON CACHE BOOL "" FORCE)
 set(SLINT_FEATURE_SDF_FONTS ON CACHE BOOL "" FORCE)
 set(DEFAULT_SLINT_EMBED_RESOURCES "embed-for-software-renderer-with-sdf" CACHE STRING "")
+set(CMAKE_BUILD_TYPE Release)
 set(BUILD_SHARED_LIBS OFF)
 
 # TODO: FetchContent?
