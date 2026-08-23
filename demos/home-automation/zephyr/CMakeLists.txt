@@ -77,6 +77,16 @@ set(DEFAULT_SLINT_EMBED_RESOURCES "embed-for-software-renderer-with-sdf" CACHE S
 set(CMAKE_BUILD_TYPE Release)
 set(BUILD_SHARED_LIBS OFF)
 
+# Corrosion asks rustc which native libraries the target links against and passes them
+# on. For the bare-metal boards it cannot: the probe crate does not build for a no-std
+# target, so the list is empty and clearing it changes nothing. native_sim is a hosted
+# target, where the probe succeeds and comes back with gcc_s among others. Zephyr links
+# native_sim partially (ld -r), which will not take a shared library, so the link then
+# needs a static libgcc_s.a that many distributions do not ship.
+if(CONFIG_ARCH_POSIX)
+    set(Rust_CARGO_TARGET_LINK_NATIVE_LIBS "" CACHE INTERNAL "" FORCE)
+endif()
+
 # TODO: FetchContent?
 add_subdirectory(../../.. slint_build)
 
