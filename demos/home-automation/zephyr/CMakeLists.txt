@@ -30,6 +30,14 @@ elseif(BOARD STREQUAL "rza3m_ek")
     set(SLINT_ZEPHYR_PANEL_ROTATION 90)
     # This display driver consumes native endian RGB 565 pixel data.
     set(SLINT_ZEPHYR_RGB565_NATIVE_ENDIAN 1)
+elseif(BOARD STREQUAL "frdm_mcxn947/mcxn947/cpu0")
+    set(Rust_CARGO_TARGET "thumbv8m.main-none-eabihf")
+    set(SLINT_LIBRARY_CARGO_FLAGS "-Zbuild-std=core,alloc")
+    set(BOARD_CONF_NAME "frdm_mcxn947_mcxn947_cpu0")
+    # main-480x320.slint lays out a 960x640 logical UI for this board's 480x320
+    # physical panel; the 0.5 scale factor is required, not optional.
+    set(SLINT_HOME_AUTOMATION_UI_DEFAULT "main-480x320.slint")
+    set(SLINT_ZEPHYR_SCALE_FACTOR_DEFAULT "0.5")
 else()
     # See rustc --print target-list for available targets. Match that up with you supported board
     # https://docs.zephyrproject.org/latest/boards
@@ -40,6 +48,14 @@ endif()
 if(SHIELD MATCHES "rk055hdmipi4ma0")
     set(SLINT_ZEPHYR_RGB565_NATIVE_ENDIAN 1)
 endif()
+
+# This panel takes native endian data, and its 480x320 frame does not fit in RAM.
+if(SHIELD MATCHES "lcd_par_s035")
+    set(SLINT_ZEPHYR_RGB565_NATIVE_ENDIAN 1)
+    set(SLINT_ZEPHYR_RENDER_BY_LINE 1)
+endif()
+set(SLINT_HOME_AUTOMATION_UI "${SLINT_HOME_AUTOMATION_UI_DEFAULT}" CACHE STRING
+    "Slint UI entry point to build (relative to ../ui)")
 
 # Use shared Zephyr configuration from zephyr-common
 set(ZEPHYR_COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../zephyr-common)
@@ -79,5 +95,29 @@ if(DEFINED SLINT_ZEPHYR_RGB565_NATIVE_ENDIAN)
     target_compile_definitions(app PRIVATE
         SLINT_ZEPHYR_RGB565_NATIVE_ENDIAN=${SLINT_ZEPHYR_RGB565_NATIVE_ENDIAN})
 endif()
+if(DEFINED SLINT_ZEPHYR_RENDER_BY_LINE)
+    target_compile_definitions(app PRIVATE SLINT_ZEPHYR_RENDER_BY_LINE)
+endif()
 
-slint_target_sources(app ../ui/demo-sw-renderer.slint)
+slint_target_sources(app ../ui/${SLINT_HOME_AUTOMATION_UI})
+
+get_filename_component(SLINT_HOME_AUTOMATION_UI_NAME ${SLINT_HOME_AUTOMATION_UI} NAME_WE)
+target_compile_definitions(app PRIVATE
+    SLINT_HOME_AUTOMATION_UI_HEADER="${SLINT_HOME_AUTOMATION_UI_NAME}.h")
+
+# Optionally render a larger logical UI scaled down to the physical display,
+# e.g. -DSLINT_ZEPHYR_SCALE_FACTOR=0.5 shows a 960x640 UI on a 480x320 panel.
+# The same factor is passed to the slint compiler so that embedded images are
+# downscaled at compile time instead of being embedded at full resolution.
+set(SLINT_ZEPHYR_SCALE_FACTOR "${SLINT_ZEPHYR_SCALE_FACTOR_DEFAULT}" CACHE STRING
+    "Slint window scale factor override")
+if(SLINT_ZEPHYR_SCALE_FACTOR)
+    target_compile_definitions(app PRIVATE
+        SLINT_ZEPHYR_SCALE_FACTOR=${SLINT_ZEPHYR_SCALE_FACTOR}f)
+    set_target_properties(app PROPERTIES SLINT_SCALE_FACTOR ${SLINT_ZEPHYR_SCALE_FACTOR})
+endif()
+
+option(SLINT_ZEPHYR_HEAP_PROBE "Log malloc headroom periodically (for measurements)" OFF)
+if(SLINT_ZEPHYR_HEAP_PROBE)
+    target_compile_definitions(app PRIVATE SLINT_ZEPHYR_HEAP_PROBE)
+endif()

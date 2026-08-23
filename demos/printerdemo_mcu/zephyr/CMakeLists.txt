@@ -24,6 +24,12 @@ else()
     message(FATAL_ERROR "Unsupported BOARD option specified: ${BOARD}")
 endif()
 
+# This panel takes native endian data, and its 480x320 frame does not fit in RAM.
+if(SHIELD MATCHES "lcd_par_s035")
+    set(SLINT_ZEPHYR_RGB565_NATIVE_ENDIAN 1)
+    set(SLINT_ZEPHYR_RENDER_BY_LINE 1)
+endif()
+
 # Use shared Zephyr configuration from zephyr-common
 set(ZEPHYR_COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../zephyr-common)
 set(CONF_FILE ${ZEPHYR_COMMON_DIR}/prj.conf)
@@ -50,5 +56,19 @@ add_subdirectory(../../.. slint_build)
 target_sources(app PRIVATE ../../zephyr-common/slint-zephyr.cpp main.cpp)
 target_include_directories(app PRIVATE ../../zephyr-common)
 target_link_libraries(app PRIVATE Slint::Slint)
+
+# How the panel is mounted and whether its driver takes native endian pixel data are board and
+# shield properties; slint-zephyr.cpp defaults both to the Zephyr documented behavior.
+if(DEFINED SLINT_ZEPHYR_PANEL_ROTATION)
+    target_compile_definitions(app PRIVATE
+        SLINT_ZEPHYR_PANEL_ROTATION=${SLINT_ZEPHYR_PANEL_ROTATION})
+endif()
+if(DEFINED SLINT_ZEPHYR_RGB565_NATIVE_ENDIAN)
+    target_compile_definitions(app PRIVATE
+        SLINT_ZEPHYR_RGB565_NATIVE_ENDIAN=${SLINT_ZEPHYR_RGB565_NATIVE_ENDIAN})
+endif()
+if(DEFINED SLINT_ZEPHYR_RENDER_BY_LINE)
+    target_compile_definitions(app PRIVATE SLINT_ZEPHYR_RENDER_BY_LINE)
+endif()
 
 slint_target_sources(app ../ui/printerdemo.slint)

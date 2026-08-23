@@ -27,6 +27,7 @@ LOG_MODULE_REGISTER(zephyrSlint, LOG_LEVEL_DBG);
 
 #include <chrono>
 #include <deque>
+#include <span>
 #include <ranges>
 
 // Set by boards whose driver declares one byte order and consumes the other, and by trees
@@ -262,38 +263,13 @@ private:
     const bool m_needs_byte_swap;
 
     bool m_needs_redraw = true;
-#ifdef CONFIG_SHIELD_LCD_PAR_S035
-    slint::platform::Rgb565Pixel *m_buffer;
-#else
     std::vector<slint::platform::Rgb565Pixel> m_buffer;
-#endif
     display_buffer_descriptor m_buffer_descriptor;
 };
 
 static ZephyrWindowAdapter *ZEPHYR_WINDOW = nullptr;
 
-// LCD-PAR-S035 shield: fixed 480x320 display resolution, BGR565 pixel format.
-// render_by_line's callback is invoked once per physical line (see
-// slint-platform.h), and maybe_redraw below always fills the buffer from
-// offset 0 and flushes it with display_write before the next line is
-// rendered, so only one line's worth of pixels is ever live at a time. The
-// buffer is a static BSS array (not heap-allocated) to avoid heap allocation
-// on this RAM-constrained board (320 KB total SRAM).
-//
-// With SLINT_ZEPHYR_RENDER_BUFFER_SRAMX defined, the buffer is placed in the
-// otherwise-unused SRAMX region instead of the main SRAM. SRAMX must be
-// reachable by the display write path for this to work, so it is an opt-in
-// toggle.
 #ifdef CONFIG_SHIELD_LCD_PAR_S035
-#    ifdef SLINT_ZEPHYR_RENDER_BUFFER_SRAMX
-#        define SLINT_ZEPHYR_RENDER_BUFFER_SECTION __attribute__((section("SRAMX")))
-#    else
-#        define SLINT_ZEPHYR_RENDER_BUFFER_SECTION
-#    endif
-static constexpr std::size_t RENDER_BUFFER_WIDTH = 480;
-static constexpr std::size_t RENDER_BUFFER_HEIGHT = 1;
-SLINT_ZEPHYR_RENDER_BUFFER_SECTION alignas(8) static slint::platform::Rgb565Pixel
-        render_buffer[RENDER_BUFFER_WIDTH * RENDER_BUFFER_HEIGHT];
 // GT911 touch X-axis range in native orientation (320 pixels, used for invert-x transform)
 static constexpr int GT911_TOUCH_X_MAX = 319;
 #endif
@@ -303,7 +279,7 @@ std::unique_ptr<ZephyrWindowAdapter> ZephyrWindowAdapter::init_from(const device
     display_capabilities capabilities;
     display_get_capabilities(display, &capabilities);
 
-#ifdef CONFIG_SHIELD_LCD_PAR_S035
+#ifdef SLINT_ZEPHYR_RENDER_BY_LINE
     RepaintBufferType bufferType = RepaintBufferType::NewBuffer;
 #else
     // TODO: Double buffer
@@ -404,11 +380,17 @@ ZephyrWindowAdapter::ZephyrWindowAdapter(const device *display, RepaintBufferTyp
       m_buffer_size(rotation.buffer_size()),
       m_needs_byte_swap(needs_byte_swap)
 {
+#ifdef SLINT_ZEPHYR_RENDER_BY_LINE
+    // One line, for parts whose RAM will not hold a whole frame.
+    m_buffer.resize(m_buffer_size.width);
+    m_buffer_descriptor.height = 1;
+#else
     m_buffer.resize(m_buffer_size.width * m_buffer_size.height);
+    m_buffer_descriptor.height = m_buffer_size.height;
+#endif
 
     m_buffer_descriptor.buf_size = sizeof(m_buffer[0]) * m_buffer.size();
     m_buffer_descriptor.width = m_buffer_size.width;
-    m_buffer_descriptor.height = m_buffer_size.height;
     m_buffer_descriptor.pitch = m_buffer_size.width;
 
     m_renderer.set_rendering_rotation(m_rotation.rendering);
@@ -434,23 +416,32 @@ void ZephyrWindowAdapter::maybe_redraw()
     if (!std::exchange(m_needs_redraw, false))
         return;
 
-#ifdef CONFIG_SHIELD_LCD_PAR_S035
-    display_buffer_descriptor line_desc {};
-    line_desc.pitch = m_size.width;
-
-    m_renderer.render_by_line<slint::platform::Rgb565Pixel>(
-            [this, &line_desc](size_t line_y, size_t first_x, size_t last_x, auto render_fn) {
-                size_t width = last_x - first_x;
-                render_fn(std::span<slint::platform::Rgb565Pixel>(m_buffer, width));
-
-                line_desc.width = width;
-                line_desc.height = 1;
-                line_desc.buf_size = width * sizeof(slint::platform::Rgb565Pixel);
-
-                display_write(m_display, first_x, line_y, &line_desc, m_buffer);
-            });
-#else
     auto start = k_uptime_get();
+#ifdef SLINT_ZEPHYR_RENDER_BY_LINE
+    auto region = m_renderer.render_by_line<slint::platform::Rgb565Pixel>(
+            [this](std::size_t line, std::size_t begin, std::size_t end, auto render_line) {
+                std::span<slint::platform::Rgb565Pixel> span(m_buffer.data() + begin, end - begin);
+                render_line(span);
+
+                if constexpr (needs_byte_swap) {
+                    for (auto &pixel : span) {
+                        auto px = reinterpret_cast<uint16_t *>(&pixel);
+                        *px = (*px << 8) | (*px >> 8);
+                    }
+                }
+
+                m_buffer_descriptor.width = span.size();
+                m_buffer_descriptor.pitch = span.size();
+                m_buffer_descriptor.buf_size = sizeof(m_buffer[0]) * span.size();
+                if (const auto ret = display_write(m_display, begin, line, &m_buffer_descriptor,
+                                                   span.data())
+                            != 0) {
+                    LOG_WRN("display_write returned non-zero: %d", ret);
+                }
+            });
+    const auto slintRenderDelta = k_uptime_delta(&start);
+    LOG_DBG("Rendered %d dirty regions line by line", std::ranges::size(region.rectangles()));
+#else
     auto region = m_renderer.render(m_buffer, m_buffer_size.width);
     const auto slintRenderDelta = k_uptime_delta(&start);
     LOG_DBG("Rendering %d dirty regions:", std::ranges::size(region.rectangles()));
@@ -498,7 +489,10 @@ void ZephyrWindowAdapter::maybe_redraw()
 slint::LogicalPosition
 ZephyrWindowAdapter::map_touch_position(slint::LogicalPosition position) const
 {
-    return rotated(position, m_rotation.touch_rotation(), m_rotation.panel_size);
+    const auto panel = rotated(position, m_rotation.touch_rotation(), m_rotation.panel_size);
+    // The touch controller reports physical pixels, Slint wants logical ones.
+    return slint::LogicalPosition({ panel.x / SLINT_ZEPHYR_SCALE_FACTOR,
+                                    panel.y / SLINT_ZEPHYR_SCALE_FACTOR });
 }
 
 ZephyrPlatform::ZephyrPlatform(const struct device *display) : m_display(display)
@@ -620,13 +614,6 @@ void ZephyrPlatform::run_in_event_loop(Task event)
         m_queue.push_back(std::move(event));
     }
     k_sem_give(&SLINT_SEM);
-}
-
-// Transform a physical touch position (after rotation) into logical coordinates
-static slint::LogicalPosition to_logical(slint::LogicalPosition p)
-{
-    return slint::LogicalPosition(
-            { p.x / SLINT_ZEPHYR_SCALE_FACTOR, p.y / SLINT_ZEPHYR_SCALE_FACTOR });
 }
 
 void zephyr_process_input_event(struct input_event *event, void *user_data)

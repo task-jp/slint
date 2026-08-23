@@ -13,7 +13,7 @@ members = [
   'home-automation/rust',
   'launcher',
   'printerdemo/rust',
-  'printerdemo_mcu',
+  'printerdemo_mcu/rust',
   'usecases/rust',
   'weather-demo',
 ]
