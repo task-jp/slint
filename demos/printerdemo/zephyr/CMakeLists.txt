@@ -76,7 +76,8 @@ endif()
 add_subdirectory(../../.. slint_build)
 
 # The app target is defined by the call to find_package(Zephyr)
-target_sources(app PRIVATE ../../zephyr-common/slint-zephyr.cpp main.cpp)
+target_sources(app PRIVATE ../../zephyr-common/slint-zephyr.cpp
+               ../../zephyr-common/spiram_heap.c main.cpp)
 target_include_directories(app PRIVATE ../../zephyr-common)
 target_link_libraries(app PRIVATE Slint::Slint)
 
