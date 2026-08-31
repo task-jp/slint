@@ -266,7 +266,13 @@ mod allocator {
 #[cfg(all(not(feature = "std"), not(feature = "esp-backtrace")))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
-    loop {}
+    // A silent loop hides every panic (allocation failures included) and, on a
+    // cooperative thread, freezes the whole system with it. Let the platform's
+    // fatal-error machinery see it instead.
+    unsafe extern "C" {
+        fn abort() -> !;
+    }
+    unsafe { abort() }
 }
 #[cfg(feature = "esp-backtrace")]
 use esp_backtrace as _;
