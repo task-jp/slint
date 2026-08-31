@@ -23,6 +23,15 @@ elseif(BOARD STREQUAL "rza3m_ek")
     set(SLINT_ZEPHYR_PANEL_ROTATION 90)
     # This display driver consumes native endian RGB 565 pixel data.
     set(SLINT_ZEPHYR_RGB565_NATIVE_ENDIAN 1)
+elseif(BOARD STREQUAL "m5stack_core2/esp32/procpu")
+    # The plain ESP32's Xtensa CPU needs the esp-rs toolchain (espup install).
+    set(Rust_TOOLCHAIN "esp")
+    set(Rust_CARGO_TARGET "xtensa-esp32-none-elf")
+    set(SLINT_LIBRARY_CARGO_FLAGS "-Zbuild-std=core,alloc")
+    set(BOARD_CONF_NAME "m5stack_core2_esp32_procpu")
+    # A full 320x240 RGB565 frame is 150 KB, which does not fit in the
+    # ESP32's remaining internal heap; render line by line instead.
+    set(SLINT_ZEPHYR_RENDER_BY_LINE 1)
 else()
     # See rustc --print target-list for available targets. Match that up with you supported board
     # https://docs.zephyrproject.org/latest/boards

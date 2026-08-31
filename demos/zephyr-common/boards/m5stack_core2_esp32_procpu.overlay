@@ -1,0 +1,14 @@
+/* Copyright © SixtyFPS GmbH <info@slint.dev>
+ * SPDX-License-Identifier: MIT
+ */
+
+/* The board sets screen-width/height on the touch controller without the
+ * inverted-x/y flags. input_touchscreen_report_pos() asserts that the two
+ * come in pairs, so any application built with CONFIG_ASSERT=y panics on
+ * the first touch. The panel needs no inversion; drop the sizes until the
+ * board definition is fixed upstream.
+ */
+&ft5336_touch {
+	/delete-property/ screen-width;
+	/delete-property/ screen-height;
+};

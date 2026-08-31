@@ -152,3 +152,24 @@ If the `nxpdebugmbox` reset itself fails with `TransferTimeoutError`, the board'
 1. Press and hold the ISP button (SW3, bottom-right corner).
 2. Press and release the Reset button (SW1, upper-left corner).
 3. Release SW3.
+
+### M5Stack Core2
+
+The [M5Stack Core2](https://docs.zephyrproject.org/latest/boards/m5stack/m5stack_core2/doc/index.html)
+is an ESP32 device with a 320x240 capacitive touch screen. The plain
+ESP32's Xtensa CPU is supported by the esp-rs fork of the Rust
+toolchain. Install it with [espup](https://github.com/esp-rs/espup):
+
+```bash
+espup install
+```
+
+Then build and flash:
+
+```bash
+# Build
+west build -b m5stack_core2/esp32/procpu -p always slint/demos/home-automation/zephyr
+
+# Flash
+west flash
+```

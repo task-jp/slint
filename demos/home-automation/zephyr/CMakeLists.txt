@@ -38,6 +38,19 @@ elseif(BOARD STREQUAL "frdm_mcxn947/mcxn947/cpu0")
     # physical panel; the 0.5 scale factor is required, not optional.
     set(SLINT_HOME_AUTOMATION_UI_DEFAULT "main-480x320.slint")
     set(SLINT_ZEPHYR_SCALE_FACTOR_DEFAULT "0.5")
+elseif(BOARD STREQUAL "m5stack_core2/esp32/procpu")
+    # The plain ESP32's Xtensa CPU needs the esp-rs toolchain (espup install).
+    set(Rust_TOOLCHAIN "esp")
+    set(Rust_CARGO_TARGET "xtensa-esp32-none-elf")
+    set(SLINT_LIBRARY_CARGO_FLAGS "-Zbuild-std=core,alloc")
+    set(BOARD_CONF_NAME "m5stack_core2_esp32_procpu")
+    # The 960x640 logical UI made for 480x320 panels also fits the Core2's
+    # 320x240 panel at a third of the scale.
+    set(SLINT_HOME_AUTOMATION_UI_DEFAULT "main-480x320.slint")
+    set(SLINT_ZEPHYR_SCALE_FACTOR_DEFAULT "0.333333")
+    # A full 320x240 RGB565 frame is 150 KB, which does not fit in the
+    # ESP32's remaining internal heap; render line by line instead.
+    set(SLINT_ZEPHYR_RENDER_BY_LINE 1)
 else()
     # See rustc --print target-list for available targets. Match that up with you supported board
     # https://docs.zephyrproject.org/latest/boards

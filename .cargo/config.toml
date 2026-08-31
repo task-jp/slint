@@ -38,3 +38,9 @@ rustflags = ["-C", "link-arg=/STACK:8000000"]
 # Increase default stack size to avoid running out of stack
 # space in debug builds. The size matches Linux's default.
 rustflags = ["-C", "link-arg=/STACK:8000000"]
+
+[target.xtensa-esp32-none-elf]
+# The Xtensa LLVM backend crashes with "Unexpected node to lower" when
+# compiling the Slint runtime for the original ESP32 (LX6) at opt-level
+# 2 or 3. opt-level "s" compiles cleanly and suits an MCU target anyway.
+rustflags = ["-C", "opt-level=s"]
