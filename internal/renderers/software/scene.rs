@@ -25,6 +25,8 @@ pub struct ScanlineVectors {
     pub radial_gradients: Vec<RadialGradientCommand>,
     pub conic_gradients: Vec<ConicGradientCommand>,
     pub box_shadows: Vec<BoxShadowCommand>,
+    #[cfg(feature = "path")]
+    pub path_masks: Vec<super::path::PathMask>,
     pub clips: Vec<ShapeClip>,
 }
 
@@ -401,6 +403,11 @@ pub enum ScanlineCommand {
     /// box_shadow_index is an index in the [`ScanlineVectors::box_shadows`] array
     BoxShadow {
         box_shadow_index: u16,
+    },
+    /// path_index is an index in the [`ScanlineVectors::path_masks`] array
+    #[cfg(feature = "path")]
+    Path {
+        path_index: u16,
     },
 }
 

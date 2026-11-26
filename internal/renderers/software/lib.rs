@@ -1433,6 +1433,10 @@ fn render_window_frame_by_line(
                             ScanlineCommand::BoxShadow { box_shadow_index } => {
                                 draw!(&scene.vectors.box_shadows[box_shadow_index as usize])
                             }
+                            #[cfg(feature = "path")]
+                            ScanlineCommand::Path { path_index } => {
+                                draw!(&scene.vectors.path_masks[path_index as usize])
+                            }
                         }
                     }
                 },
@@ -2217,6 +2221,30 @@ impl ScanlineRasterCommands {
     }
 }
 
+#[cfg(feature = "path")]
+impl ScanlineRasterCommands {
+    fn push_path(
+        &mut self,
+        path_geometry: PhysicalRect,
+        clip_geometry: PhysicalRect,
+        commands: &[path::Command],
+        style: zeno::Style,
+        paint: path::Paint,
+        rounded_clips: &[RoundedClip],
+    ) {
+        let Some(visible) = path_geometry.intersection(&clip_geometry) else { return };
+        if visible.is_empty() {
+            return;
+        }
+        let Some(mask) = path::PathMask::new(commands, path_geometry, style, paint) else {
+            return;
+        };
+        let path_index = self.vectors.path_masks.len() as u16;
+        self.vectors.path_masks.push(mask);
+        self.push_item(visible, ScanlineCommand::Path { path_index }, rounded_clips, None);
+    }
+}
+
 impl RasterCommandSink for ScanlineRasterCommands {
     fn push(&mut self, command: RasterCommand, rounded_clips: &[RoundedClip]) {
         use RasterCommand::*;
@@ -2320,9 +2348,32 @@ impl RasterCommandSink for ScanlineRasterCommands {
                 self.vectors.box_shadows.push(shadow);
                 (geometry, ScanlineCommand::BoxShadow { box_shadow_index }, None)
             }
-            // The scanline rasterizer can't draw paths.
             #[cfg(feature = "path")]
-            FilledPath { .. } | StrokedPath { .. } => return,
+            FilledPath { path_geometry, clip_geometry, commands, paint, fill_rule } => {
+                let style = path::fill_style(fill_rule);
+                self.push_path(
+                    path_geometry,
+                    clip_geometry,
+                    &commands,
+                    style,
+                    paint,
+                    rounded_clips,
+                );
+                return;
+            }
+            #[cfg(feature = "path")]
+            StrokedPath { path_geometry, clip_geometry, commands, paint, style } => {
+                let style = style.to_zeno();
+                self.push_path(
+                    path_geometry,
+                    clip_geometry,
+                    &commands,
+                    style,
+                    paint,
+                    rounded_clips,
+                );
+                return;
+            }
         };
         if !geometry.is_empty() {
             self.push_item(geometry, scanline_command, rounded_clips, own_clip);

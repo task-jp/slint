@@ -4,7 +4,7 @@
 //! Path rendering support for the software renderer using zeno
 
 use super::PhysicalRect;
-use super::draw_functions::{LineClip, interpolate_color};
+use super::draw_functions::{LineClip, LineCommand, interpolate_color};
 use super::target_pixel::{PremultipliedRgbaColor, TargetPixel};
 use super::{
     AnyGradientCommand, PhysicalLength, PhysicalRegion, RoundedClip, ShapeClip, shape_clips,
@@ -113,6 +113,71 @@ fn render_mask(commands: &[Command], width: usize, height: usize, style: Style) 
     let mut mask = vec![0u8; width * height];
     Mask::new(commands).size(width as u32, height as u32).style(style).render_into(&mut mask, None);
     mask
+}
+
+/// A path's coverage mask and paint, for the line-by-line rendering.
+pub struct PathMask {
+    mask: Vec<u8>,
+    path_geometry: PhysicalRect,
+    paint: Paint,
+}
+
+impl PathMask {
+    pub fn new(
+        commands: &[Command],
+        path_geometry: PhysicalRect,
+        style: Style,
+        paint: Paint,
+    ) -> Option<Self> {
+        if path_geometry.is_empty() {
+            return None;
+        }
+        let mask = render_mask(
+            commands,
+            path_geometry.width() as usize,
+            path_geometry.height() as usize,
+            style,
+        );
+        Some(Self { mask, path_geometry, paint })
+    }
+
+    /// `rect` must lie within the path's geometry.
+    fn draw_line<T: TargetPixel>(
+        &self,
+        rect: &PhysicalRect,
+        line: PhysicalLength,
+        buffer: &mut [T],
+        extra_left_clip: i16,
+    ) {
+        let x = rect.min_x() + extra_left_clip;
+        let row = (line.get() - self.path_geometry.min_y()) as usize;
+        let start =
+            row * self.path_geometry.width() as usize + (x - self.path_geometry.min_x()) as usize;
+        paint_row(buffer, x, &self.mask[start..start + buffer.len()], &self.paint, line);
+    }
+}
+
+impl<T: TargetPixel> LineCommand<T> for PathMask {
+    fn draw_line(
+        &self,
+        rect: &PhysicalRect,
+        line: PhysicalLength,
+        buffer: &mut [T],
+        extra_left_clip: i16,
+        _extra_right_clip: i16,
+    ) {
+        PathMask::draw_line(self, rect, line, buffer, extra_left_clip)
+    }
+    fn draw_scratch_line(
+        &self,
+        rect: &PhysicalRect,
+        line: PhysicalLength,
+        buffer: &mut [PremultipliedRgbaColor],
+        extra_left_clip: i16,
+        _extra_right_clip: i16,
+    ) {
+        PathMask::draw_line(self, rect, line, buffer, extra_left_clip)
+    }
 }
 
 /// Draws `mask` within `clip_geometry`.
