@@ -89,13 +89,7 @@ fn render_path_with_style<T: TargetPixel>(
         return;
     }
 
-    // The mask is always rendered at the full path size: rasterizing a translated or cropped
-    // path rounds differently, so a partial repaint would differ from a full one.
-    let mut mask_buffer = vec![0u8; path_width * path_height];
-    Mask::new(commands)
-        .size(path_width as u32, path_height as u32)
-        .style(style)
-        .render_into(&mut mask_buffer, None);
+    let mask_buffer = render_mask(commands, path_width, path_height, style);
 
     for clip_geometry in region.iter_box().map(|r| r.to_rect()) {
         clips.clear();
@@ -109,6 +103,16 @@ fn render_path_with_style<T: TargetPixel>(
             buffer,
         );
     }
+}
+
+/// Rasterizes the path's coverage, one byte per pixel and `width` bytes per row.
+///
+/// The mask is always rendered at the full path size: rasterizing a translated or cropped
+/// path rounds differently, so a partial repaint would differ from a full one.
+fn render_mask(commands: &[Command], width: usize, height: usize, style: Style) -> Vec<u8> {
+    let mut mask = vec![0u8; width * height];
+    Mask::new(commands).size(width as u32, height as u32).style(style).render_into(&mut mask, None);
+    mask
 }
 
 /// Draws `mask` within `clip_geometry`.
@@ -161,63 +165,79 @@ fn draw_mask<T: TargetPixel>(
             mask_row = &clipped_row;
         }
         let line = buffer.line_slice(screen_y);
+        paint_row(
+            &mut line[x_start..x_end],
+            x_start as i16,
+            mask_row,
+            paint,
+            PhysicalLength::new(screen_y as i16),
+        );
+    }
+}
 
-        match paint {
-            Paint::Solid(color) => {
-                for (pixel, &coverage) in line[x_start..x_end].iter_mut().zip(mask_row) {
-                    if coverage > 0 {
-                        // Scale all color components by coverage to maintain premultiplication
-                        let coverage = coverage as u16;
-                        let alpha_color = PremultipliedRgbaColor {
-                            red: ((color.red as u16 * coverage) / 255) as u8,
-                            green: ((color.green as u16 * coverage) / 255) as u8,
-                            blue: ((color.blue as u16 * coverage) / 255) as u8,
-                            alpha: ((color.alpha as u16 * coverage) / 255) as u8,
-                        };
-                        T::blend(pixel, alpha_color);
-                    }
+/// Fills `line` with `paint`, scaled by `mask_row`.
+/// `line[0]` is at the screen x `x_origin`, and `line` is as long as `mask_row`.
+fn paint_row<T: TargetPixel>(
+    line: &mut [T],
+    x_origin: i16,
+    mask_row: &[u8],
+    paint: &Paint,
+    line_number: PhysicalLength,
+) {
+    match paint {
+        Paint::Solid(color) => {
+            for (pixel, &coverage) in line.iter_mut().zip(mask_row) {
+                if coverage > 0 {
+                    // Scale all color components by coverage to maintain premultiplication
+                    let coverage = coverage as u16;
+                    let alpha_color = PremultipliedRgbaColor {
+                        red: ((color.red as u16 * coverage) / 255) as u8,
+                        green: ((color.green as u16 * coverage) / 255) as u8,
+                        blue: ((color.blue as u16 * coverage) / 255) as u8,
+                        alpha: ((color.alpha as u16 * coverage) / 255) as u8,
+                    };
+                    T::blend(pixel, alpha_color);
                 }
             }
-            Paint::Gradient(gradients) => {
-                let line_number = PhysicalLength::new(screen_y as i16);
-                let mut run_end = 0;
-                while let Some(skipped) = mask_row[run_end..].iter().position(|&c| c > 0) {
-                    let run_start = run_end + skipped;
-                    let opaque = mask_row[run_start] == u8::MAX;
-                    run_end = mask_row[run_start..]
-                        .iter()
-                        .position(|&c| c == 0 || (c == u8::MAX) != opaque)
-                        .map_or(mask_row.len(), |len| run_start + len);
-                    let run = x_start + run_start..x_start + run_end;
-                    if opaque {
+        }
+        Paint::Gradient(gradients) => {
+            let mut run_end = 0;
+            while let Some(skipped) = mask_row[run_end..].iter().position(|&c| c > 0) {
+                let run_start = run_end + skipped;
+                let opaque = mask_row[run_start] == u8::MAX;
+                run_end = mask_row[run_start..]
+                    .iter()
+                    .position(|&c| c == 0 || (c == u8::MAX) != opaque)
+                    .map_or(mask_row.len(), |len| run_start + len);
+                let run = run_start..run_end;
+                if opaque {
+                    for (rect, gradient) in gradients {
+                        gradient.as_command::<T>().draw_line(
+                            rect,
+                            line_number,
+                            &mut line[run.clone()],
+                            x_origin + run.start as i16 - rect.min_x(),
+                            rect.max_x() - x_origin - run.end as i16,
+                        );
+                    }
+                    continue;
+                }
+                blend_with_coverage(
+                    line,
+                    run,
+                    |scratch, chunk| {
                         for (rect, gradient) in gradients {
-                            gradient.as_command::<T>().draw_line(
+                            gradient.as_command::<T>().draw_scratch_line(
                                 rect,
                                 line_number,
-                                &mut line[run.clone()],
-                                run.start as i16 - rect.min_x(),
-                                rect.max_x() - run.end as i16,
+                                scratch,
+                                x_origin + chunk.start as i16 - rect.min_x(),
+                                rect.max_x() - x_origin - chunk.end as i16,
                             );
                         }
-                        continue;
-                    }
-                    blend_with_coverage(
-                        line,
-                        run,
-                        |scratch, chunk| {
-                            for (rect, gradient) in gradients {
-                                gradient.as_command::<T>().draw_scratch_line(
-                                    rect,
-                                    line_number,
-                                    scratch,
-                                    chunk.start as i16 - rect.min_x(),
-                                    rect.max_x() - chunk.end as i16,
-                                );
-                            }
-                        },
-                        |x| mask_row[x - x_start] as u32,
-                    );
-                }
+                    },
+                    |x| mask_row[x] as u32,
+                );
             }
         }
     }
@@ -266,10 +286,6 @@ pub fn render_filled_path<T: TargetPixel>(
     fill_rule: i_slint_core::items::FillRule,
     buffer: &mut impl crate::target_pixel_buffer::TargetPixelBuffer<TargetPixel = T>,
 ) {
-    let fill = match fill_rule {
-        i_slint_core::items::FillRule::Evenodd => Fill::EvenOdd,
-        i_slint_core::items::FillRule::Nonzero | _ => Fill::NonZero,
-    };
     render_path_with_style(
         commands,
         path_geometry,
@@ -277,9 +293,17 @@ pub fn render_filled_path<T: TargetPixel>(
         rounded_clips,
         clips,
         paint,
-        zeno::Style::Fill(fill),
+        fill_style(fill_rule),
         buffer,
     );
+}
+
+/// The zeno style that fills a path with `fill_rule`.
+pub fn fill_style(fill_rule: i_slint_core::items::FillRule) -> Style<'static> {
+    Style::Fill(match fill_rule {
+        i_slint_core::items::FillRule::Evenodd => Fill::EvenOdd,
+        i_slint_core::items::FillRule::Nonzero | _ => Fill::NonZero,
+    })
 }
 
 #[derive(Clone)]
@@ -312,22 +336,6 @@ pub fn render_stroked_path<T: TargetPixel>(
     stroke_style: &StrokeStyle,
     buffer: &mut impl crate::target_pixel_buffer::TargetPixelBuffer<TargetPixel = T>,
 ) {
-    let mut stroke = Stroke::new(stroke_style.width);
-    stroke
-        .cap(match stroke_style.line_cap {
-            i_slint_core::items::LineCap::Round => Cap::Round,
-            i_slint_core::items::LineCap::Square => Cap::Square,
-            i_slint_core::items::LineCap::Butt | _ => Cap::Butt,
-        })
-        .join(match stroke_style.line_join {
-            i_slint_core::items::LineJoin::Round => Join::Round,
-            i_slint_core::items::LineJoin::Bevel => Join::Bevel,
-            i_slint_core::items::LineJoin::Miter | _ => Join::Miter,
-        })
-        .miter_limit(stroke_style.miter_limit)
-        .dash(&stroke_style.dash_array, stroke_style.dash_offset);
-
-    let style = Style::Stroke(stroke);
     render_path_with_style(
         commands,
         path_geometry,
@@ -335,7 +343,28 @@ pub fn render_stroked_path<T: TargetPixel>(
         rounded_clips,
         clips,
         paint,
-        style,
+        stroke_style.to_zeno(),
         buffer,
     );
+}
+
+impl StrokeStyle {
+    /// The zeno style that strokes a path with these properties.
+    pub fn to_zeno(&self) -> Style<'_> {
+        let mut stroke = Stroke::new(self.width);
+        stroke
+            .cap(match self.line_cap {
+                i_slint_core::items::LineCap::Round => Cap::Round,
+                i_slint_core::items::LineCap::Square => Cap::Square,
+                i_slint_core::items::LineCap::Butt | _ => Cap::Butt,
+            })
+            .join(match self.line_join {
+                i_slint_core::items::LineJoin::Round => Join::Round,
+                i_slint_core::items::LineJoin::Bevel => Join::Bevel,
+                i_slint_core::items::LineJoin::Miter | _ => Join::Miter,
+            })
+            .miter_limit(self.miter_limit)
+            .dash(&self.dash_array, self.dash_offset);
+        Style::Stroke(stroke)
+    }
 }
